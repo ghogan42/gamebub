@@ -44,12 +44,12 @@ pub mod presets {
     /// Values from Pokefan531 and hunterk
     pub static GBC_GBA: ColorCorrection = ColorCorrection {
         in_gamma: 2.2,
-        out_gamma: 2.2,
+        out_gamma: 1.6,
         luminance: 0.91,
         matrix: [
             0.905, 0.195, -0.1, // red
-            0.1, 0.65, 0.25, // green
-            0.1575, 0.1425, 0.7, // blue
+            0.08, 0.54, 0.2, // green
+            0.11, 0.10, 0.5, // blue
         ],
     };
 

@@ -39,6 +39,10 @@ pub static GBA_ENABLE_GBP: KvsKey<bool> = KvsKey::new_with_default("gba-enable-g
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);
 
+/// Screen color temperature preset: 0 = Normal, 1 = Warm, 2 = Cool. Only
+/// takes effect on rev4 (ILI9806E). See COLOR_TEMPERATURE.md.
+pub static COLOR_TEMPERATURE: KvsKey<i32> = KvsKey::new_with_default("color-temp", 0);
+
 /// Last firmware version
 pub static LAST_FIRMWARE_VERSION: KvsKey<String> = KvsKey::new("last-fw-version");
 
@@ -59,6 +63,7 @@ pub fn flush_all() {
     GBA_COLOR_PROFILE.flush();
     GBA_ENABLE_GBP.flush();
     STARTUP_ACTION.flush();
+    COLOR_TEMPERATURE.flush();
     LAST_FIRMWARE_VERSION.flush();
     GBA_BIOS_WARNING.flush();
 }

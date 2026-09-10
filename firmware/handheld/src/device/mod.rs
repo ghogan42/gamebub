@@ -708,6 +708,18 @@ impl Device<'_> {
         self.lcd_backlight.set_brightness(brightness);
     }
 
+    /// Set the display color-temperature preset (0 = Normal, 1 = Warm,
+    /// 2 = Cool). Only has an effect on rev4 (ILI9806E); no-op on other
+    /// revisions, which don't have a panel-level gamma control interface.
+    /// See COLOR_TEMPERATURE.md.
+    #[cfg(feature = "has_ili9806e")]
+    pub fn set_color_temperature(&mut self, preset: i32) {
+        self.lcd.set_color_temperature(preset).unwrap();
+    }
+
+    #[cfg(not(feature = "has_ili9806e"))]
+    pub fn set_color_temperature(&mut self, _preset: i32) {}
+
     /// Initialize the system time (after boot).
     ///
     /// Reads the time from the RTC. Sets a default time if no time is set.

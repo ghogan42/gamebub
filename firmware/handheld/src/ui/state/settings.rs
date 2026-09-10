@@ -76,6 +76,11 @@ mod settings {
                 key: &keys::STARTUP_ACTION,
                 choices: &["Main Menu", "Run Cartridge"],
             },
+            Entry::List {
+                name: "Color Temperature",
+                key: &keys::COLOR_TEMPERATURE,
+                choices: &["Normal", "Warm", "Cool"],
+            },
         ],
     };
 
@@ -311,7 +316,14 @@ impl SettingsModel {
 
         match entry {
             settings::Entry::Checkbox { key, .. } => key.set(&value.bool_value),
-            settings::Entry::List { key, .. } => key.set(&value.int_value),
+            settings::Entry::List { key, .. } => {
+                key.set(&value.int_value);
+                // Color temperature applies globally/live, unlike most List
+                // settings which are only read when a core/cartridge loads.
+                if std::ptr::eq(*key, &crate::kvs::keys::COLOR_TEMPERATURE) {
+                    Device::lock().set_color_temperature(value.int_value);
+                }
+            }
             settings::Entry::SystemDatetime { .. } => {
                 let dt = convert_settings_datetime(&value.datetime_value).unwrap();
                 let dt = dt.replace_second(0).unwrap();

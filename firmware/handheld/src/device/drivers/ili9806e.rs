@@ -263,4 +263,81 @@ where
         // No-op
         Ok(())
     }
+
+    /// Select a command page, per the `0xFF,[0xFF,0x98,0x06,0x04,page]`
+    /// pattern used throughout `init()`.
+    fn select_page(&mut self, page: u8) -> Result<(), Error> {
+        self.write_cmd(0xFF, &[0xFF, 0x98, 0x06, 0x04, page])
+    }
+
+    /// Write a "Digital Gamma Control" table (macro: page 2, registers
+    /// 0x00-0x3F) with the same (r, b) nibble pair repeated at every
+    /// point. Per the datasheet's write-order flowchart (ILI9806E_Gamma.pdf
+    /// p.239), writing all registers 0x00..=last_reg in order -- ending on
+    /// last_reg -- is what latches the table; since every point here is
+    /// identical there's nothing point-specific to sequence.
+    fn write_gamma_table(&mut self, page: u8, last_reg: u8, r: u8, b: u8) -> Result<(), Error> {
+        self.select_page(page)?;
+        let value = ((r & 0xF) << 4) | (b & 0xF);
+        for reg in 0..=last_reg {
+            self.write_cmd(reg, &[value])?;
+        }
+        Ok(())
+    }
+
+    /// Apply a color-temperature preset via the panel's "Digital 3 Gamma"
+    /// feature (`En_3G`): independently adjusts the Red and Blue gamma
+    /// curves relative to the shared base curve (which also drives Green,
+    /// written once in `init()` via the Positive/Negative Gamma Control
+    /// commands, 0xA0-0xAF/0xC0-0xCF). See ILI9806E_Gamma.pdf pages
+    /// 238-249 and COLOR_TEMPERATURE.md.
+    ///
+    /// `preset`: 0 = Normal (feature disabled, matches default shipped
+    /// behavior), 1 = Warm, 2 = Cool. Anything else falls back to Normal.
+    ///
+    /// Only the macro table (page 2, 64 points, coarse) is written -- the
+    /// micro tables (pages 3/4, 256 points, meant for fine trims layered on
+    /// top of macro's shape) are intentionally left untouched.
+    ///
+    /// The Warm/Cool `r`/`b` nibble values are **untuned placeholders** to
+    /// make the two presets visibly distinct -- not measured
+    /// color-temperature corrections. The datasheet excerpt available
+    /// doesn't include the voltage/formula that maps these nibble values
+    /// to an actual curve shift, so getting exact values requires
+    /// empirical tuning (e.g. with a spectrophotometer) rather than
+    /// derivation.
+    pub fn set_color_temperature(&mut self, preset: i32) -> Result<(), Error> {
+        struct Gamma3Preset {
+            enable: bool,
+            r: u8,
+            b: u8,
+        }
+        let preset = match preset {
+            1 => Gamma3Preset {
+                enable: true,
+                r: 7,
+                b: 15,
+            },
+            2 => Gamma3Preset {
+                enable: true,
+                r: 15,
+                b: 7,
+            },
+            _ => Gamma3Preset {
+                enable: false,
+                r: 0,
+                b: 0,
+            },
+        };
+
+        // Macro adjustment (page 2, 64 points, registers 0x00-0x3F).
+        self.write_gamma_table(0x02, 0x3F, preset.r, preset.b)?;
+        // Digital 3 Gamma Enable (D3GE), register 0x40, still page 2.
+        self.write_cmd(0x40, &[preset.enable as u8])?;
+
+        // Back to page 0 for normal commands, matching init()'s convention.
+        self.select_page(0x00)?;
+
+        Ok(())
+    }
 }

@@ -38,6 +38,15 @@ impl DmgPalette {
         }
     }
 
+    /// The palette's background/"off" color (the 4th/lightest entry of the
+    /// background palette, `bg[3]` -- same value used for `off`), expanded
+    /// from RGB555 to an approximate RGB888 value via bit replication (not
+    /// run through the FPGA's color correction pipeline). Used by the
+    /// Gameboy "Shadow" pixel effects to blend against.
+    pub fn background_rgb888_approx(&self) -> (u8, u8, u8) {
+        self.bg[3].to_rgb888_approx()
+    }
+
     pub fn load(&self, device: &mut Device) -> Result<(), super::GameboyError> {
         fn copy(dest: &mut [u8], source: &[DmgPaletteColor; 4]) {
             for (i, entry) in source.iter().enumerate() {
@@ -76,5 +85,16 @@ impl DmgPaletteColor {
         let g = ((rgb >> 8) & 0xFF) >> 3;
         let b = ((rgb >> 0) & 0xFF) >> 3;
         Self(((r << 10) | (g << 5) | b) as u16)
+    }
+
+    /// Inverse of `from_rgb888`'s 8->5 bit truncation: expands each 5-bit
+    /// channel back to 8 bits via bit replication (`(v << 3) | (v >> 2)`),
+    /// not a real color-correction pass -- see `background_rgb888_approx`.
+    fn to_rgb888_approx(self) -> (u8, u8, u8) {
+        let expand = |v5: u16| (((v5 << 3) | (v5 >> 2)) & 0xFF) as u8;
+        let r5 = (self.0 >> 10) & 0x1F;
+        let g5 = (self.0 >> 5) & 0x1F;
+        let b5 = self.0 & 0x1F;
+        (expand(r5), expand(g5), expand(b5))
     }
 }

@@ -96,14 +96,27 @@ mod settings {
             //     key: &keys::GB_SKIP_BOOT_ANIM,
             // },
             Entry::List {
+                name: "GB Color Palette",
+                key: &keys::DMG_COLOR_PALETTE,
+                choices: &["Grayscale", "DMG Green", "GB Pocket"],
+            },
+            Entry::List {
                 name: "GBC Color Corrections",
                 key: &keys::CGB_COLOR_PROFILE,
                 choices: &["None", "GBC", "GBA", "GBA SP"],
             },
             Entry::List {
-                name: "GB Color Palette",
-                key: &keys::DMG_COLOR_PALETTE,
-                choices: &["Grayscale", "DMG Green", "GB Pocket"],
+                name: "Pixel Effects",
+                key: &keys::GB_PIXEL_EFFECT,
+                choices: &[
+                    "None",
+                    "Grid",
+                    "Stripe",
+                    "RGB Grid",
+                    "Shadow 1",
+                    "Shadow 2",
+                    "Shadow 3",
+                ],
             },
         ],
     };
@@ -115,11 +128,6 @@ mod settings {
             //     name: "Skip Boot Animation",
             //     key: &keys::GBA_SKIP_BOOT_ANIM,
             // },
-            Entry::List {
-                name: "Color Corrections",
-                key: &keys::GBA_COLOR_PROFILE,
-                choices: &["None", "GBA", "GBA SP", "NDS", "NDS Lite", "NSO GBA"],
-            },
             Entry::Checkbox {
                 name: "Enable Game Boy Player",
                 key: &keys::GBA_ENABLE_GBP,
@@ -127,6 +135,31 @@ mod settings {
             Entry::Checkbox {
                 name: "Warn about missing BIOS",
                 key: &keys::GBA_BIOS_WARNING,
+            },
+            Entry::List {
+                name: "Pixel Effects",
+                key: &keys::GBA_PIXEL_EFFECT,
+                choices: &[
+                    "None",
+                    "Grid",
+                    "Stripe",
+                    "RGB Grid",
+                    "Scanlines - Light",
+                    "Scanlines - Dark",
+                ],
+            },
+            Entry::List {
+                name: "Color Corrections",
+                key: &keys::GBA_COLOR_PROFILE,
+                choices: &[
+                    "None",
+                    "GBA",
+                    "GBA SP",
+                    "NDS",
+                    "NDS Lite",
+                    "NSO GBA",
+                    "Unofficial GBA",
+                ],
             },
         ],
     };

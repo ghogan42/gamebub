@@ -36,6 +36,17 @@ pub static GBA_COLOR_PROFILE: KvsKey<i32> = KvsKey::new_with_default("gba-colors
 /// Whether to enable Game Boy Player functionality
 pub static GBA_ENABLE_GBP: KvsKey<bool> = KvsKey::new_with_default("gba-enable-gbp", true);
 
+/// GBA pixel effect: 0 = None, 1 = Grid, 2 = Stripe, 3 = RGB Grid,
+/// 4 = Scanlines Light, 5 = Scanlines Dark.
+pub static GBA_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gba-pixel-fx", 0);
+
+/// Gameboy pixel effect setting-list index: 0 = None, 1 = Grid, 2 = Stripe,
+/// 3 = RGB Grid, 4 = Shadow 1, 5 = Shadow 2, 6 = Shadow 3. Translated to
+/// the shared FPGA REG_CTRL_PIXEL_EFFECT hardware mode numbers in
+/// `bitstream/gameboy/mod.rs` (Shadow modes are hw modes 6-8 in DMG mode,
+/// 9-11 in CGB mode).
+pub static GB_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gb-pixel-fx", 0);
+
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);
 
@@ -62,6 +73,8 @@ pub fn flush_all() {
     GBA_SKIP_BOOT_ANIM.flush();
     GBA_COLOR_PROFILE.flush();
     GBA_ENABLE_GBP.flush();
+    GBA_PIXEL_EFFECT.flush();
+    GB_PIXEL_EFFECT.flush();
     STARTUP_ACTION.flush();
     COLOR_TEMPERATURE.flush();
     LAST_FIRMWARE_VERSION.flush();

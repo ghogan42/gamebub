@@ -42,14 +42,15 @@ pub mod presets {
 
     /// Game Boy Color and Game Boy Advance (original)
     /// Values from Pokefan531 and hunterk
+    /// Modified by ghogan42
     pub static GBC_GBA: ColorCorrection = ColorCorrection {
         in_gamma: 2.2,
-        out_gamma: 1.6,
+        out_gamma: 1.65,
         luminance: 0.91,
         matrix: [
             0.905, 0.195, -0.1, // red
-            0.08, 0.54, 0.2, // green
-            0.11, 0.10, 0.5, // blue
+            0.087, 0.59, 0.218, // green
+            0.125, 0.114, 0.571, // blue
         ],
     };
 
@@ -102,6 +103,18 @@ pub mod presets {
             0.865, 0.1225, 0.0125, // red
             0.0575, 0.925, 0.0125, // green
             0.0575, 0.1225, 0.82, // blue
+        ],
+    };
+
+    /// Unofficial GBA: Non-scientific setting from soltan_g42/ghogan42
+    pub static UNOFFICIAL_GBA: ColorCorrection = ColorCorrection {
+        in_gamma: 2.2,
+        out_gamma: 1.6,
+        luminance: 1.0,
+        matrix: [
+            0.89, 0.10, 0.01, // red
+            0.052, 0.82, 0.06, // green
+            0.052, 0.085, 0.73, // blue
         ],
     };
 }

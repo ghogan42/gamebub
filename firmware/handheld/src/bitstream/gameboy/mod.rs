@@ -49,6 +49,41 @@ const SETTING_RESET: u16 = 0;
 const SETTING_GB_MODE: u16 = 1;
 const SETTING_GBC_COLOR_CORRECTIONS: u16 = 2;
 const SETTING_GB_COLOR_PALETTE: u16 = 3;
+const SETTING_PIXEL_EFFECT: u16 = 4;
+
+/// GB_PIXEL_EFFECT's setting-list index doesn't match the shared hardware
+/// mode numbers 1:1 -- hw modes 4/5 (Scanlines) are GBA-only, so the
+/// Gameboy "Shadow" entries (setting index 4-6) map to hw modes 6-8 in DMG
+/// mode, or 9-11 in CGB mode (CGB's Shadow effects use a different,
+/// self-contained blend formula -- see HandheldTop.scala).
+const PIXEL_EFFECT_HW_MODES_DMG: [u32; 7] = [0, 1, 2, 3, 6, 7, 8];
+const PIXEL_EFFECT_HW_MODES_CGB: [u32; 7] = [0, 1, 2, 3, 9, 10, 11];
+
+fn pixel_effect_hw_mode(is_dmg: bool, setting_value: i32) -> u32 {
+    let table = if is_dmg {
+        &PIXEL_EFFECT_HW_MODES_DMG
+    } else {
+        &PIXEL_EFFECT_HW_MODES_CGB
+    };
+    table.get(setting_value as usize).copied().unwrap_or(0)
+}
+
+/// Background color for the DMG-only "Shadow" pixel effects, packed as
+/// 0x00RRGGBB. CGB has no single well-defined background color (each game
+/// defines its own per-tile palette), so this assumes white for CGB --
+/// the CGB Shadow hardware modes don't actually read this register, but
+/// it's kept consistent/non-stale regardless.
+fn dmg_shadow_bg_packed(is_dmg: bool, palette_setting: i32) -> u32 {
+    let (r, g, b) = if is_dmg {
+        dmg_palette::PALETTES
+            .get(palette_setting as usize)
+            .unwrap_or(&dmg_palette::PALETTES[0])
+            .background_rgb888_approx()
+    } else {
+        (255, 255, 255)
+    };
+    ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
 
 #[derive(Debug, Error)]
 pub enum GameboyError {
@@ -228,6 +263,31 @@ impl Gameboy {
                                 label: x.into(),
                             })
                             .collect(),
+                    },
+                },
+                CoreSetting {
+                    id: SETTING_PIXEL_EFFECT,
+                    label: "Pixel Effects".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 0,
+                    inner: CoreSettingType::List {
+                        items: [
+                            "None",
+                            "Grid",
+                            "Stripe",
+                            "RGB Grid",
+                            "Shadow 1",
+                            "Shadow 2",
+                            "Shadow 3",
+                        ]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &x)| CoreSettingListItem {
+                            value: i as u32,
+                            label: x.into(),
+                        })
+                        .collect(),
                     },
                 },
             ]
@@ -416,6 +476,10 @@ impl CoreHandler for Gameboy {
                 SETTING_GB_COLOR_PALETTE,
                 kvs::keys::DMG_COLOR_PALETTE.get().unwrap() as u32,
             ),
+            (
+                SETTING_PIXEL_EFFECT,
+                kvs::keys::GB_PIXEL_EFFECT.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -428,6 +492,20 @@ impl CoreHandler for Gameboy {
                 let _ = device.fpga.write_u32(REG_EMU_CONFIG, config);
                 let _ = device.fpga.write_u32(REG_RESET_ONCE, 1);
                 kvs::keys::GB_IS_DMG.set(&is_dmg);
+
+                // Re-push the pixel effect and shadow background: which
+                // hardware mode "Shadow N" maps to (and what the shadow
+                // background should be) depends on DMG vs CGB mode.
+                let palette_setting = kvs::keys::DMG_COLOR_PALETTE.get().unwrap();
+                let effect_setting = kvs::keys::GB_PIXEL_EFFECT.get().unwrap();
+                let _ = device.fpga.write_u32(
+                    fpga::REG_CTRL_DMG_SHADOW_BG,
+                    dmg_shadow_bg_packed(is_dmg, palette_setting),
+                );
+                let _ = device.fpga.write_u32(
+                    fpga::REG_CTRL_PIXEL_EFFECT,
+                    pixel_effect_hw_mode(is_dmg, effect_setting),
+                );
             }
             SETTING_GBC_COLOR_CORRECTIONS => {
                 kvs::keys::CGB_COLOR_PROFILE.set(&(value as i32));
@@ -443,10 +521,27 @@ impl CoreHandler for Gameboy {
                 let _ = correction.configure(&mut device, COLOR_CORRECTION_BASE);
             }
             SETTING_GB_COLOR_PALETTE => {
+                kvs::keys::DMG_COLOR_PALETTE.set(&(value as i32));
                 let palette = dmg_palette::PALETTES
                     .get(value as usize)
                     .unwrap_or(&dmg_palette::PALETTES[0]);
                 let _ = palette.load(&mut device);
+
+                // Keep the Shadow effects' background in sync with the
+                // newly selected palette (only meaningful in DMG mode).
+                let is_dmg = kvs::keys::GB_IS_DMG.get().unwrap();
+                let _ = device.fpga.write_u32(
+                    fpga::REG_CTRL_DMG_SHADOW_BG,
+                    dmg_shadow_bg_packed(is_dmg, value as i32),
+                );
+            }
+            SETTING_PIXEL_EFFECT => {
+                kvs::keys::GB_PIXEL_EFFECT.set(&(value as i32));
+                let is_dmg = kvs::keys::GB_IS_DMG.get().unwrap();
+                let _ = device.fpga.write_u32(
+                    fpga::REG_CTRL_PIXEL_EFFECT,
+                    pixel_effect_hw_mode(is_dmg, value as i32),
+                );
             }
             _ => {}
         }

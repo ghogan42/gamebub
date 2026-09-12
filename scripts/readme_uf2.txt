@@ -2,7 +2,6 @@ How to extract and pack a uf2 firmware image
 
   1. Extract the official UF2
 
-  cd /Users/ghogan42/dev/Gamebub_Firmware
   python3 gamebub/scripts/unpack_uf2.py gamebub-rev4_v1.0.1.uf2 extracted/
 
   This creates extracted/ with:

@@ -42,15 +42,14 @@ pub mod presets {
 
     /// Game Boy Color and Game Boy Advance (original)
     /// Values from Pokefan531 and hunterk
-    /// Modified by ghogan42
     pub static GBC_GBA: ColorCorrection = ColorCorrection {
         in_gamma: 2.2,
         out_gamma: 1.65,
         luminance: 0.91,
         matrix: [
             0.905, 0.195, -0.1, // red
-            0.087, 0.59, 0.218, // green
-            0.125, 0.114, 0.571, // blue
+            0.1, 0.65, 0.25, // green
+            0.1575, 0.1425, 0.7, // blue
         ],
     };
 
@@ -82,6 +81,7 @@ pub mod presets {
 
     /// Nintendo DS Lite
     /// Values from Pokefan531 and hunterk
+    /*
     pub static NDS_LITE: ColorCorrection = ColorCorrection {
         in_gamma: 2.2,
         out_gamma: 2.2,
@@ -92,6 +92,7 @@ pub mod presets {
             0.008, -0.03, 1.022, // blue
         ],
     };
+    */
 
     /// Nintendo Switch Online GBA
     /// Values from Pokefan531 and hunterk
@@ -107,14 +108,26 @@ pub mod presets {
     };
 
     /// Unofficial GBA: Non-scientific setting from soltan_g42/ghogan42
-    pub static UNOFFICIAL_GBA: ColorCorrection = ColorCorrection {
+    pub static UNOFFICIAL_GBA_16: ColorCorrection = ColorCorrection {
         in_gamma: 2.2,
         out_gamma: 1.6,
-        luminance: 1.0,
+        luminance: 0.95,
         matrix: [
-            0.89, 0.10, 0.01, // red
-            0.052, 0.82, 0.06, // green
-            0.052, 0.085, 0.73, // blue
+            0.892, 0.16, -0.062, // red
+            0.080, 0.607, 0.154, // green
+            0.102, 0.109, 0.576, // blue
+        ],
+    };
+
+    /// Unofficial GBA: Non-scientific setting from soltan_g42/ghogan42
+    pub static UNOFFICIAL_GBA_22: ColorCorrection = ColorCorrection {
+        in_gamma: 2.2,
+        out_gamma: 2.2,
+        luminance: 0.95,
+        matrix: [
+            0.892, 0.16, -0.062, // red
+            0.080, 0.607, 0.154, // green
+            0.102, 0.109, 0.576, // blue
         ],
     };
 }

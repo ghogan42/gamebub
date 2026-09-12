@@ -238,7 +238,13 @@ impl Gameboy {
                     mask: 0,
                     default: 1,
                     inner: CoreSettingType::List {
-                        items: ["None", "GBC", "GBA", "GBA SP"]
+                        items: [
+                            "None",
+                            "GBA",
+                            "GBA SP",
+                            "Unofficial GBA 2.2",
+                            "Unofficial GBA 1.6",
+                        ]
                             .iter()
                             .enumerate()
                             .map(|(i, &x)| CoreSettingListItem {
@@ -511,7 +517,13 @@ impl CoreHandler for Gameboy {
                 kvs::keys::CGB_COLOR_PROFILE.set(&(value as i32));
                 let correction = {
                     use color_correction::presets::*;
-                    let corrections = [&IDENTITY, &GBC_GBA, &GBC_GBA, &GBA_AGS101];
+                    let corrections = [
+                        &IDENTITY,
+                        &GBC_GBA,
+                        &GBA_AGS101,
+                        &UNOFFICIAL_GBA_22,
+                        &UNOFFICIAL_GBA_16,
+                    ];
                     if kvs::keys::GB_IS_DMG.get().unwrap_or_default() {
                         &IDENTITY
                     } else {

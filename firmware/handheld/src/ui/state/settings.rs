@@ -103,7 +103,13 @@ mod settings {
             Entry::List {
                 name: "GBC Color Corrections",
                 key: &keys::CGB_COLOR_PROFILE,
-                choices: &["None", "GBC", "GBA", "GBA SP"],
+                choices: &[
+                    "None",
+                    "GBA",
+                    "GBA SP",
+                    "Unofficial GBA 2.2",
+                    "Unofficial GBA 1.6",
+                ],
             },
             Entry::List {
                 name: "Pixel Effects",
@@ -156,9 +162,9 @@ mod settings {
                     "GBA",
                     "GBA SP",
                     "NDS",
-                    "NDS Lite",
                     "NSO GBA",
-                    "Unofficial GBA",
+                    "Unofficial GBA 2.2",
+                    "Unofficial GBA 1.6",
                 ],
             },
         ],

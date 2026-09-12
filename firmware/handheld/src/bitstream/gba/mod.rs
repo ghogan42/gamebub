@@ -208,7 +208,15 @@ impl Gba {
         // Color correction
         let correction: &ColorCorrection = {
             use color_correction::presets::*;
-            let corrections = [&IDENTITY, &GBC_GBA, &GBA_AGS101, &NDS, &NDS_LITE, &NSO_GBA];
+            let corrections = [
+                &IDENTITY,
+                &GBC_GBA,
+                &GBA_AGS101,
+                &NDS,
+                &NSO_GBA,
+                &UNOFFICIAL_GBA_22,
+                &UNOFFICIAL_GBA_16,
+            ];
             let setting = kvs::keys::GBA_COLOR_PROFILE.get().unwrap() as usize;
             corrections.get(setting).unwrap_or(&&IDENTITY)
         };
@@ -304,9 +312,9 @@ impl Gba {
                             "GBA",
                             "GBA SP",
                             "NDS",
-                            "NDS Lite",
                             "NSO GBA",
-                            "Unofficial GBA",
+                            "Unofficial GBA 2.2",
+                            "Unofficial GBA 1.6",
                         ]
                             .iter()
                             .enumerate()
@@ -626,9 +634,9 @@ impl CoreHandler for Gba {
                         &GBC_GBA,
                         &GBA_AGS101,
                         &NDS,
-                        &NDS_LITE,
                         &NSO_GBA,
-                        &UNOFFICIAL_GBA,
+                        &UNOFFICIAL_GBA_22,
+                        &UNOFFICIAL_GBA_16,
                     ];
                     corrections.get(value as usize).unwrap_or(&&IDENTITY)
                 };

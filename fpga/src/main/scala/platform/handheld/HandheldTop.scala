@@ -428,6 +428,17 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     val docked = Bool()
   }))
 
+  /**
+   * Audio output filter. 0 = original sample-and-hold of the core's audio
+   * at 48 kHz, 1 = order-3 CIC decimator (anti-aliasing) followed by a
+   * 1-pole IIR that compensates the CIC's treble droop. Resets to 0 on
+   * FPGA reconfiguration, so cores that never write it get the original
+   * output.
+   */
+  val controlAudioFilter = RegInit(0.U.asTypeOf(new Bundle() {
+    val enable = Bool()
+  }))
+
   val controlCommandHost = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
   val controlCommandCore = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
 
@@ -464,6 +475,7 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
       0x100C -> RegisterMap.Entry.w(controlDock),
       0x1010 -> RegisterMap.Entry.w(controlCoreFocus),
       0x1014 -> RegisterMap.Entry.w(controlVibrate),
+      0x1024 -> RegisterMap.Entry.rw(controlAudioFilter),
 
       0x1100 -> RegisterMap.Entry.rw(controlCommandHost),
       0x1104 -> RegisterMap.Entry.rw(controlCommandCore),
@@ -777,6 +789,69 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
 
     val bitClockCounter = Counter(mclkFactor / bitWidth / channels / 2)
     val sampleCounter = Counter(mclkFactor)
+    val sampleWrap = WireInit(false.B)
+
+    // Order-3 CIC decimator: mclkEdge (12.288 MHz) -> sampleWrap (48 kHz), R = 256.
+    // Anti-aliasing alternative to the plain 48 kHz sample-and-hold, which lets core
+    // audio content above 24 kHz alias into the audible band. R is a power of 2, so
+    // the fixed R^N gain is removed with a right-shift. Register widths follow
+    // Hogenauer (input + N*log2(R) bits); wraparound inside them is intentional.
+    val cicOrder = 3
+    val cicGrowth = cicOrder * log2Ceil(mclkFactor)
+    // Fraction bits kept below the output LSB so the IIR feedback doesn't
+    // accumulate truncation noise.
+    val iirFracBits = 4
+    def cicDecimate(x: SInt): SInt = {
+      val w = x.getWidth + cicGrowth
+      def wrap(v: SInt): SInt = v(w - 1, 0).asSInt
+
+      // Each integrator reads the previous stage's register (not its next value)
+      // to keep the adder chain short; this only adds a fixed delay.
+      val integ = Seq.fill(cicOrder)(RegInit(0.S(w.W)))
+      when (mclkEdge) {
+        integ(0) := wrap(integ(0) + x)
+        for (i <- 1 until cicOrder) {
+          integ(i) := wrap(integ(i) + integ(i - 1))
+        }
+      }
+
+      val combPrev = Seq.fill(cicOrder)(RegInit(0.S(w.W)))
+      val out = RegInit(0.S(w.W))
+      when (sampleWrap) {
+        var stage = integ.last
+        for (i <- 0 until cicOrder) {
+          val diff = wrap(stage - combPrev(i))
+          combPrev(i) := stage
+          stage = diff
+        }
+        out := stage
+      }
+
+      out >> (cicGrowth - iirFracBits)
+    }
+
+    // First-order IIR droop compensation at 48 kHz: y = 1.5x - 0.5y[n-1] (pole at
+    // z = -0.5), which flattens the order-3 CIC passband to within ~0.25 dB up to
+    // 20 kHz. Its treble boost overshoots on sharp edges (~1.3x full scale on
+    // square waves), so the output saturates. The 2 headroom bits cover the
+    // filter's worst-case gain of 3.
+    def droopCompensate(x: SInt): SInt = {
+      val y = RegInit(0.S((x.getWidth + 2).W))
+      when (sampleWrap) {
+        y := x +& (x >> 1) -& (y >> 1)
+      }
+      val rounded = (y +& (1 << (iirFracBits - 1)).S) >> iirFracBits
+      val maxOut = ((1 << (bitWidth - 1)) - 1).S
+      val minOut = (-(1 << (bitWidth - 1))).S
+      Mux(rounded > maxOut, maxOut, Mux(rounded < minOut, minOut, rounded))(bitWidth - 1, 0).asSInt
+    }
+
+    val filteredAudio = Wire(new Bundle {
+      val left = SInt(bitWidth.W)
+      val right = SInt(bitWidth.W)
+    })
+    filteredAudio.left := droopCompensate(cicDecimate(syncAudioData.left))
+    filteredAudio.right := droopCompensate(cicDecimate(syncAudioData.right))
 
     when (mclkEdge) {
       when (bitClockCounter.inc()) {
@@ -788,9 +863,14 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
         }
       }
       when (sampleCounter.inc()) {
-        regSample := syncAudioData.asUInt
-        regWordClock := true.B
+        sampleWrap := true.B
       }
+    }
+
+    val audioFilterEnable = XpmCdcSingle(clock, controlAudioFilter.enable)
+    when (sampleWrap) {
+      regSample := Mux(audioFilterEnable, filteredAudio.asUInt, syncAudioData.asUInt)
+      regWordClock := true.B
     }
 
     io.dac.mclk := regMClock

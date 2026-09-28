@@ -1,0 +1,69 @@
+import { Global, ScreenId, Backend } from "../common.slint";
+import { ScreenBase } from "../components/screen.slint";
+import { ControlHint } from "../components/control_hint.slint";
+
+// Full-screen solid color test patterns, for measuring the display with a
+// spectrophotometer while a color-temperature preset is active. Label/hint
+// bars are semi-transparent black so they stay legible over any test color.
+export component ColorTestScreen inherits ScreenBase {
+    title: "Color Test";
+    background: rgb(Backend.color-test-r, Backend.color-test-g, Backend.color-test-b);
+    forward-focus: i-focus-scope;
+
+    i-focus-scope := FocusScope {
+        VerticalLayout {
+            height: 100%;
+
+            Rectangle {
+                background: rgba(0, 0, 0, 60%);
+                height: 20px;
+                Text {
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    font-weight: 800;
+                    font-size: 14px;
+                    color: white;
+                    text: Backend.color-test-label;
+                }
+            }
+
+            Rectangle {
+                // Transparent spacer: lets the full-screen background color
+                // show through between the label and hint bars.
+            }
+
+            Rectangle {
+                background: rgba(0, 0, 0, 60%);
+                height: 16px;
+                HorizontalLayout {
+                    alignment: end;
+                    padding-right: 4px;
+                    spacing: 8px;
+                    ControlHint {
+                        label: "Next";
+                        button: "a";
+                    }
+                    ControlHint {
+                        label: "Back";
+                        button: "b";
+                    }
+                }
+            }
+        }
+
+        key-pressed(event) => {
+            if event.text == "Home" && !Global.home-consumed {
+                Global.set-screen(ScreenId.MainMenu);
+                accept
+            } else if (event.text == "b") {
+                Global.set-screen(ScreenId.Settings);
+                accept
+            } else if (event.text == "a" && !event.repeat) {
+                Backend.color-test-advance();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+}

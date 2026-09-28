@@ -23,6 +23,7 @@ export enum ScreenId {
     Error,
     About,
     Cores,
+    ColorTest,
 }
 
 export struct BatteryInfo {
@@ -79,6 +80,13 @@ export global Backend {
 
     in property <bool> notification-visible: false;
     in property <string> notification-text: "I am a notification!";
+
+    // Color test screen (spectrophotometer test patterns).
+    in property <string> color-test-label: "";
+    in property <int> color-test-r: 0;
+    in property <int> color-test-g: 0;
+    in property <int> color-test-b: 0;
+    callback color-test-advance();
 
     in property <[SettingEntry]> settings: [
         {

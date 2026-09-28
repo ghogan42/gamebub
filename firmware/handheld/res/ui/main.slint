@@ -12,6 +12,7 @@ import { PowerMenu } from "components/power_menu.slint";
 import { Notification } from "components/notification.slint";
 import { SetupScreen } from "screens/setup.slint";
 import { CoresScreen } from "screens/cores/cores.slint";
+import { ColorTestScreen } from "screens/color_test.slint";
 
 export { ScreenId, Backend }
 export component MainWindow inherits Window {
@@ -113,6 +114,13 @@ export component MainWindow inherits Window {
                 if (Global.current-screen == ScreenId.Cores): CoresScreen {
                     init => {
                         Global.ui-status-bar = true;
+                        root.screen-title = self.title;
+                    }
+                }
+
+                if (Global.current-screen == ScreenId.ColorTest): ColorTestScreen {
+                    init => {
+                        self.focus();
                         root.screen-title = self.title;
                     }
                 }

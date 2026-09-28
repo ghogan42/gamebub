@@ -88,6 +88,7 @@ mod settings {
             key: &keys::EXTRA_COLOR_FIX,
             choices: &["None", "D75", "D65"],
         },
+        PAGE_GENERAL_COLOR_TEST,
     ];
 
     #[cfg(not(feature = "has_ili9806e"))]
@@ -95,6 +96,7 @@ mod settings {
         PAGE_GENERAL_DATETIME,
         PAGE_GENERAL_STARTUP,
         PAGE_GENERAL_COLOR_TEMP,
+        PAGE_GENERAL_COLOR_TEST,
     ];
 
     const PAGE_GENERAL_DATETIME: Entry = Entry::SystemDatetime {
@@ -109,6 +111,10 @@ mod settings {
         name: "Color Temperature",
         key: &keys::COLOR_TEMPERATURE,
         choices: &["Normal", "Warm", "Cool"],
+    };
+    const PAGE_GENERAL_COLOR_TEST: Entry = Entry::Screen {
+        name: "Color Test",
+        screen: ScreenId::ColorTest,
     };
 
     pub static PAGE_DOCK: Page = Page {

@@ -428,6 +428,30 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     val docked = Bool()
   }))
 
+  /**
+   * Pixel effect applied to the scaled framebuffer, keyed by the pixel's
+   * position within its (videoScale x videoScale) replicated block.
+   * 0 = None, 1 = Grid, 2 = Stripe, 3 = RGB Grid, 4 = Scanlines Light,
+   * 5 = Scanlines Dark (GBA only), 6 = Shadow 1, 7 = Shadow 2, 8 = Shadow 3
+   * (Gameboy DMG only, blend against controlDmgShadowBg), 9 = Shadow 1,
+   * 10 = Shadow 2, 11 = Shadow 3 (Gameboy CGB only, blend against a
+   * per-pixel-derived value instead of a register).
+   */
+  val controlPixelEffect = RegInit(0.U.asTypeOf(new Bundle() {
+    val mode = UInt(4.W)
+  }))
+  /**
+   * Background color the Gameboy DMG-only "Shadow" pixel effects
+   * (modes 6-8) blend against -- the current DMG palette's background
+   * color, written by firmware (already expanded to 8 bits/channel; no
+   * color correction applied to it). Unused by other pixel effects.
+   */
+  val controlDmgShadowBg = RegInit(0.U.asTypeOf(new Bundle() {
+    val r = UInt(8.W)
+    val g = UInt(8.W)
+    val b = UInt(8.W)
+  }))
+
   val controlCommandHost = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
   val controlCommandCore = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
 
@@ -464,6 +488,8 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
       0x100C -> RegisterMap.Entry.w(controlDock),
       0x1010 -> RegisterMap.Entry.w(controlCoreFocus),
       0x1014 -> RegisterMap.Entry.w(controlVibrate),
+      0x1018 -> RegisterMap.Entry.rw(controlPixelEffect),
+      0x101C -> RegisterMap.Entry.rw(controlDmgShadowBg),
 
       0x1100 -> RegisterMap.Entry.rw(controlCommandHost),
       0x1104 -> RegisterMap.Entry.rw(controlCommandCore),
@@ -571,6 +597,11 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     val videoY = Wire(UInt(10.W))
     val framebufferReadAddress = Wire(UInt(log2Ceil(videoWidth * videoHeight).W))
     val overlayReadAddress = Wire(UInt(log2Ceil(overlayWidth * overlayHeight).W))
+    /** Position of this output pixel within its (videoScale x videoScale) replicated block. */
+    val gridCol = Wire(UInt(4.W))
+    val gridRow = Wire(UInt(4.W))
+    val pixelEffectConfig = XpmCdcHandshake.continuous(clock, controlPixelEffect)
+    val dmgShadowBgConfig = XpmCdcHandshake.continuous(clock, controlDmgShadowBg)
 
     val audioData = XpmCdcHandshake.continuous(clock, coreAudioData)
 
@@ -613,7 +644,170 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     val overlayInBounds = Wire(Bool())
     val videoOutput = ColorRGB(8, 8, 8).make(r = 0, g = 0, b = 0)
     when (framebufferInBounds) {
-      videoOutput := framebufferColor.convertTo(videoOutput)
+      // Darken by 1 / 2^shift using a shift-and-subtract instead of a multiply.
+      def darken(x: UInt, shift: Int): UInt = x - (x >> shift)
+      // Average of two 8-bit channels: widen to 9 bits to avoid overflow,
+      // then a static (Scala Int, not UInt) `>> 1` narrows back to 8 bits.
+      def avg(a: UInt, b: UInt): UInt = (a +& b) >> 1
+      // ~0.75*bg + 0.25*pixel, shift-and-add instead of multiply. Always
+      // fits in 8 bits: darken(bg,2) <= bg <= 255, (pixel >> 2) <= 63, and
+      // their sum is maximized (255) only at bg=pixel=255.
+      def shadowY(bg: UInt, pixel: UInt): UInt = (darken(bg, 2) +& (pixel >> 2))(7, 0)
+      // CGB-only Shadow effects (modes 9-11) have no single well-defined
+      // background color to read from a register (unlike DMG's palette
+      // background), so they derive a per-pixel luma-like scalar `d`
+      // instead: 0.25*r + 0.5*g + 0.25*b + 64, clamped to 255.
+      def computeD(r: UInt, g: UInt, b: UInt): UInt = {
+        val sum = (r >> 2) +& (g >> 1) +& (b >> 2) +& 64.U
+        Mux(sum > 255.U, 255.U(8.W), sum(7, 0))
+      }
+
+      val pixel = framebufferColor.convertTo(videoOutput)
+      val effect = Wire(chiselTypeOf(pixel))
+      effect := pixel
+      switch (pixelEffectConfig.mode) {
+        is (1.U) {
+          // Grid: every 3rd column or row (but not double-darkened at their
+          // intersection) is dimmed to 75%, all channels.
+          val dim = gridCol === 2.U || gridRow === 2.U
+          effect.r := Mux(dim, darken(pixel.r, 2), pixel.r)
+          effect.g := Mux(dim, darken(pixel.g, 2), pixel.g)
+          effect.b := Mux(dim, darken(pixel.b, 2), pixel.b)
+        }
+        is (2.U) {
+          // Stripe: per-column, dim two of the three channels to 75%
+          // (simulates an RGB-striped subpixel layout).
+          val dimR = gridCol =/= 0.U
+          val dimG = gridCol =/= 1.U
+          val dimB = gridCol =/= 2.U
+          effect.r := Mux(dimR, darken(pixel.r, 2), pixel.r)
+          effect.g := Mux(dimG, darken(pixel.g, 2), pixel.g)
+          effect.b := Mux(dimB, darken(pixel.b, 2), pixel.b)
+        }
+        is (3.U) {
+          // RGB Grid: Stripe, plus every 3rd row is darkened an additional
+          // 12.5% on top of the stripe result, all channels.
+          val dimR = gridCol =/= 0.U
+          val dimG = gridCol =/= 1.U
+          val dimB = gridCol =/= 2.U
+          val stripedR = Mux(dimR, darken(pixel.r, 2), pixel.r)
+          val stripedG = Mux(dimG, darken(pixel.g, 2), pixel.g)
+          val stripedB = Mux(dimB, darken(pixel.b, 2), pixel.b)
+          val dimRow = gridRow === 2.U
+          effect.r := Mux(dimRow, darken(stripedR, 3), stripedR)
+          effect.g := Mux(dimRow, darken(stripedG, 3), stripedG)
+          effect.b := Mux(dimRow, darken(stripedB, 3), stripedB)
+        }
+        is (4.U) {
+          // Scanlines - Light: every 3rd row darkened to 75%, all channels.
+          val dim = gridRow === 2.U
+          effect.r := Mux(dim, darken(pixel.r, 2), pixel.r)
+          effect.g := Mux(dim, darken(pixel.g, 2), pixel.g)
+          effect.b := Mux(dim, darken(pixel.b, 2), pixel.b)
+        }
+        is (5.U) {
+          // Scanlines - Dark: every 3rd row darkened to 50%, all channels.
+          val dim = gridRow === 2.U
+          effect.r := Mux(dim, darken(pixel.r, 1), pixel.r)
+          effect.g := Mux(dim, darken(pixel.g, 1), pixel.g)
+          effect.b := Mux(dim, darken(pixel.b, 1), pixel.b)
+        }
+        is (6.U) {
+          // Shadow 1 (Gameboy DMG only):
+          //   c c x
+          //   c c x
+          //   x x x
+          // x = avg(background, pixel).
+          val useX = gridCol === 2.U || gridRow === 2.U
+          effect.r := Mux(useX, avg(dmgShadowBgConfig.r, pixel.r), pixel.r)
+          effect.g := Mux(useX, avg(dmgShadowBgConfig.g, pixel.g), pixel.g)
+          effect.b := Mux(useX, avg(dmgShadowBgConfig.b, pixel.b), pixel.b)
+        }
+        is (7.U) {
+          // Shadow 2 (Gameboy DMG only):
+          //   c c b
+          //   c c x
+          //   b x x
+          // x = avg(background, pixel); b = background, unblended.
+          val useB = (gridRow === 0.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol === 0.U)
+          val useX = (gridRow === 1.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol =/= 0.U)
+          val xR = avg(dmgShadowBgConfig.r, pixel.r)
+          val xG = avg(dmgShadowBgConfig.g, pixel.g)
+          val xB = avg(dmgShadowBgConfig.b, pixel.b)
+          effect.r := Mux(useB, dmgShadowBgConfig.r, Mux(useX, xR, pixel.r))
+          effect.g := Mux(useB, dmgShadowBgConfig.g, Mux(useX, xG, pixel.g))
+          effect.b := Mux(useB, dmgShadowBgConfig.b, Mux(useX, xB, pixel.b))
+        }
+        is (8.U) {
+          // Shadow 3 (Gameboy DMG only):
+          //   c c y
+          //   c c x
+          //   y x x
+          // Same layout as Shadow 2, but the corner cells use
+          // y = 0.75*background + 0.25*pixel instead of pure background.
+          val useY = (gridRow === 0.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol === 0.U)
+          val useX = (gridRow === 1.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol =/= 0.U)
+          val xR = avg(dmgShadowBgConfig.r, pixel.r)
+          val xG = avg(dmgShadowBgConfig.g, pixel.g)
+          val xB = avg(dmgShadowBgConfig.b, pixel.b)
+          val yR = shadowY(dmgShadowBgConfig.r, pixel.r)
+          val yG = shadowY(dmgShadowBgConfig.g, pixel.g)
+          val yB = shadowY(dmgShadowBgConfig.b, pixel.b)
+          effect.r := Mux(useY, yR, Mux(useX, xR, pixel.r))
+          effect.g := Mux(useY, yG, Mux(useX, xG, pixel.g))
+          effect.b := Mux(useY, yB, Mux(useX, xB, pixel.b))
+        }
+        is (9.U) {
+          // Shadow 1 (Gameboy CGB only): same layout as hw mode 6, but
+          // blended against a per-pixel derived d (see computeD) instead
+          // of the DMG palette background register.
+          val d = computeD(pixel.r, pixel.g, pixel.b)
+          val useX = gridCol === 2.U || gridRow === 2.U
+          effect.r := Mux(useX, avg(pixel.r, d), pixel.r)
+          effect.g := Mux(useX, avg(pixel.g, d), pixel.g)
+          effect.b := Mux(useX, avg(pixel.b, d), pixel.b)
+        }
+        is (10.U) {
+          // Shadow 2 (Gameboy CGB only): same layout as hw mode 7, but
+          // b = d (same scalar for all three channels) instead of the DMG
+          // palette background register.
+          val d = computeD(pixel.r, pixel.g, pixel.b)
+          val useB = (gridRow === 0.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol === 0.U)
+          val useX = (gridRow === 1.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol =/= 0.U)
+          val xR = avg(pixel.r, d)
+          val xG = avg(pixel.g, d)
+          val xB = avg(pixel.b, d)
+          effect.r := Mux(useB, d, Mux(useX, xR, pixel.r))
+          effect.g := Mux(useB, d, Mux(useX, xG, pixel.g))
+          effect.b := Mux(useB, d, Mux(useX, xB, pixel.b))
+        }
+        is (11.U) {
+          // Shadow 3 (Gameboy CGB only): same layout as hw mode 8, but
+          // blended against d instead of the DMG palette background
+          // register: y = 0.25*pixel + 0.75*d.
+          val d = computeD(pixel.r, pixel.g, pixel.b)
+          val useY = (gridRow === 0.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol === 0.U)
+          val useX = (gridRow === 1.U && gridCol === 2.U) ||
+            (gridRow === 2.U && gridCol =/= 0.U)
+          val xR = avg(pixel.r, d)
+          val xG = avg(pixel.g, d)
+          val xB = avg(pixel.b, d)
+          val yR = shadowY(d, pixel.r)
+          val yG = shadowY(d, pixel.g)
+          val yB = shadowY(d, pixel.b)
+          effect.r := Mux(useY, yR, Mux(useX, xR, pixel.r))
+          effect.g := Mux(useY, yG, Mux(useX, xG, pixel.g))
+          effect.b := Mux(useY, yB, Mux(useX, xB, pixel.b))
+        }
+      }
+      videoOutput := effect
     }
     when (overlayRead.a.asBool && overlayInBounds) {
       videoOutput := overlayRead.convertTo(videoOutput)
@@ -684,6 +878,8 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
         videoX < (videoOffsetX + (videoWidth * videoScale)).U &&
         videoY >= videoOffsetY.U &&
         videoY < (videoOffsetY + (videoHeight * videoScale)).U
+      gridCol := (videoX - videoOffsetX.U) % videoScale.U
+      gridRow := (videoY - videoOffsetY.U) % videoScale.U
 
       // Scale overlay
       val overlayScale = (screenWidth / overlayWidth).min(screenHeight / overlayHeight)
@@ -731,6 +927,8 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
         dpiX < (videoOffsetX + (videoWidth * videoScale)).U &&
         dpiY >= videoOffsetY.U &&
         dpiY < (videoOffsetY + (videoHeight * videoScale)).U
+      gridCol := (dpiX - videoOffsetX.U) % videoScale.U
+      gridRow := (dpiY - videoOffsetY.U) % videoScale.U
 
       // Scale overlay
       val overlayScale = (screenWidth / overlayWidth).min(screenHeight / overlayHeight)

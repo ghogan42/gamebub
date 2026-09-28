@@ -79,6 +79,7 @@ fn main() -> anyhow::Result<()> {
         log::warn!("Failed to mount SD card");
     }
     device.set_brightness(kvs::keys::BRIGHTNESS.get().unwrap());
+    device.set_color_temperature(kvs::keys::COLOR_TEMPERATURE.get().unwrap());
 
     // Setup workers.
     worker::start();

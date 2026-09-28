@@ -444,6 +444,7 @@ impl CoreHandler for Gameboy {
                 let _ = correction.configure(&mut device, COLOR_CORRECTION_BASE);
             }
             SETTING_GB_COLOR_PALETTE => {
+                kvs::keys::DMG_COLOR_PALETTE.set(&(value as i32));
                 let palette = dmg_palette::PALETTES
                     .get(value as usize)
                     .unwrap_or(&dmg_palette::PALETTES[0]);

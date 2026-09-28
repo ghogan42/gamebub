@@ -52,6 +52,7 @@ const FILE_CONFIG_OVERRIDE: u16 = 3;
 const SETTING_RESET: u16 = 0;
 const SETTING_COLOR_CORRECTIONS: u16 = 1;
 const SETTING_GAME_BOY_PLAYER: u16 = 2;
+const SETTING_PIXEL_EFFECT: u16 = 3;
 
 #[derive(Debug, Error)]
 pub enum GbaError {
@@ -343,6 +344,30 @@ impl Gba {
                     default: 1,
                     inner: CoreSettingType::Checkbox { value: 1 },
                 },
+                CoreSetting {
+                    id: SETTING_PIXEL_EFFECT,
+                    label: "Pixel Effects".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 0,
+                    inner: CoreSettingType::List {
+                        items: [
+                            "None",
+                            "Grid",
+                            "Stripe",
+                            "RGB Grid",
+                            "Scanlines - Light",
+                            "Scanlines - Dark",
+                        ]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &x)| CoreSettingListItem {
+                            value: i as u32,
+                            label: x.into(),
+                        })
+                        .collect(),
+                    },
+                },
             ]
             .into_iter()
             .collect(),
@@ -616,6 +641,10 @@ impl CoreHandler for Gba {
                 SETTING_GAME_BOY_PLAYER,
                 kvs::keys::GBA_ENABLE_GBP.get().unwrap() as u32,
             ),
+            (
+                SETTING_PIXEL_EFFECT,
+                kvs::keys::GBA_PIXEL_EFFECT.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -634,6 +663,10 @@ impl CoreHandler for Gba {
             SETTING_GAME_BOY_PLAYER => {
                 kvs::keys::GBA_ENABLE_GBP.set(&(value == 1));
                 let _ = device.fpga.write_u32(REG_GB_PLAYER, value);
+            }
+            SETTING_PIXEL_EFFECT => {
+                kvs::keys::GBA_PIXEL_EFFECT.set(&(value as i32));
+                let _ = device.fpga.write_u32(fpga::REG_CTRL_PIXEL_EFFECT, value);
             }
             _ => {}
         }

@@ -112,6 +112,19 @@ mod settings {
                 key: &keys::DMG_COLOR_PALETTE,
                 choices: &["Grayscale", "DMG Green", "GB Pocket"],
             },
+            Entry::List {
+                name: "Pixel Effects",
+                key: &keys::GB_PIXEL_EFFECT,
+                choices: &[
+                    "None",
+                    "Grid",
+                    "Stripe",
+                    "RGB Grid",
+                    "Shadow 1",
+                    "Shadow 2",
+                    "Shadow 3",
+                ],
+            },
         ],
     };
 
@@ -134,6 +147,18 @@ mod settings {
             Entry::Checkbox {
                 name: "Warn about missing BIOS",
                 key: &keys::GBA_BIOS_WARNING,
+            },
+            Entry::List {
+                name: "Pixel Effects",
+                key: &keys::GBA_PIXEL_EFFECT,
+                choices: &[
+                    "None",
+                    "Grid",
+                    "Stripe",
+                    "RGB Grid",
+                    "Scanlines - Light",
+                    "Scanlines - Dark",
+                ],
             },
         ],
     };

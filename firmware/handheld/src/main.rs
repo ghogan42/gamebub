@@ -89,6 +89,9 @@ fn main() -> anyhow::Result<()> {
     fn program_fpga(device: &mut Device) -> anyhow::Result<()> {
         bitstream::initial_program_boot(device)?;
         device.fpga.enable_interrupt(fpga::Irq::Button)?;
+        // Must come after programming: the register lives in the FPGA and
+        // resets on reconfiguration.
+        device.set_extra_color_fix(kvs::keys::EXTRA_COLOR_FIX.get().unwrap());
         device.lcd.enable_fpga_control()?;
         Ok(())
     }

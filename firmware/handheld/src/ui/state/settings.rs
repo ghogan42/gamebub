@@ -71,21 +71,44 @@ mod settings {
 
     pub static PAGE_GENERAL: Page = Page {
         name: "General",
-        entries: &[
-            Entry::SystemDatetime {
-                name: "Date and Time (UTC)",
-            },
-            Entry::List {
-                name: "Startup Action",
-                key: &keys::STARTUP_ACTION,
-                choices: &["Main Menu", "Run Cartridge"],
-            },
-            Entry::List {
-                name: "Color Temperature",
-                key: &keys::COLOR_TEMPERATURE,
-                choices: &["Normal", "Warm", "Cool"],
-            },
-        ],
+        entries: PAGE_GENERAL_ENTRIES,
+    };
+
+    /// "Extra Color Fix" is rev4-only: its gains were measured from that
+    /// revision's ILI9806E panel, and the FPGA stage that applies them is
+    /// only built for rev4. Hiding it elsewhere beats showing a setting
+    /// that silently does nothing.
+    #[cfg(feature = "has_ili9806e")]
+    static PAGE_GENERAL_ENTRIES: &[Entry] = &[
+        PAGE_GENERAL_DATETIME,
+        PAGE_GENERAL_STARTUP,
+        PAGE_GENERAL_COLOR_TEMP,
+        Entry::List {
+            name: "Extra Color Fix",
+            key: &keys::EXTRA_COLOR_FIX,
+            choices: &["None", "D75", "D65"],
+        },
+    ];
+
+    #[cfg(not(feature = "has_ili9806e"))]
+    static PAGE_GENERAL_ENTRIES: &[Entry] = &[
+        PAGE_GENERAL_DATETIME,
+        PAGE_GENERAL_STARTUP,
+        PAGE_GENERAL_COLOR_TEMP,
+    ];
+
+    const PAGE_GENERAL_DATETIME: Entry = Entry::SystemDatetime {
+        name: "Date and Time (UTC)",
+    };
+    const PAGE_GENERAL_STARTUP: Entry = Entry::List {
+        name: "Startup Action",
+        key: &keys::STARTUP_ACTION,
+        choices: &["Main Menu", "Run Cartridge"],
+    };
+    const PAGE_GENERAL_COLOR_TEMP: Entry = Entry::List {
+        name: "Color Temperature",
+        key: &keys::COLOR_TEMPERATURE,
+        choices: &["Normal", "Warm", "Cool"],
     };
 
     pub static PAGE_DOCK: Page = Page {
@@ -330,10 +353,13 @@ impl SettingsModel {
             settings::Entry::Checkbox { key, .. } => key.set(&value.bool_value),
             settings::Entry::List { key, .. } => {
                 key.set(&value.int_value);
-                // Color temperature applies globally/live, unlike most List
-                // settings which are only read when a core/cartridge loads.
+                // Color temperature and the extra color fix apply globally and
+                // live, unlike most List settings which are only read when a
+                // core/cartridge loads.
                 if std::ptr::eq(*key, &crate::kvs::keys::COLOR_TEMPERATURE) {
                     Device::lock().set_color_temperature(value.int_value);
+                } else if std::ptr::eq(*key, &crate::kvs::keys::EXTRA_COLOR_FIX) {
+                    Device::lock().set_extra_color_fix(value.int_value);
                 }
             }
             settings::Entry::SystemDatetime { .. } => {

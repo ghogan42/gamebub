@@ -52,6 +52,7 @@ const FILE_CONFIG_OVERRIDE: u16 = 3;
 const SETTING_RESET: u16 = 0;
 const SETTING_COLOR_CORRECTIONS: u16 = 1;
 const SETTING_GAME_BOY_PLAYER: u16 = 2;
+const SETTING_AUDIO_FILTER: u16 = 4;
 
 #[derive(Debug, Error)]
 pub enum GbaError {
@@ -343,6 +344,14 @@ impl Gba {
                     default: 1,
                     inner: CoreSettingType::Checkbox { value: 1 },
                 },
+                CoreSetting {
+                    id: SETTING_AUDIO_FILTER,
+                    label: "Audio Filter".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 1,
+                    inner: CoreSettingType::Checkbox { value: 1 },
+                },
             ]
             .into_iter()
             .collect(),
@@ -616,6 +625,10 @@ impl CoreHandler for Gba {
                 SETTING_GAME_BOY_PLAYER,
                 kvs::keys::GBA_ENABLE_GBP.get().unwrap() as u32,
             ),
+            (
+                SETTING_AUDIO_FILTER,
+                kvs::keys::GBA_AUDIO_FILTER.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -634,6 +647,10 @@ impl CoreHandler for Gba {
             SETTING_GAME_BOY_PLAYER => {
                 kvs::keys::GBA_ENABLE_GBP.set(&(value == 1));
                 let _ = device.fpga.write_u32(REG_GB_PLAYER, value);
+            }
+            SETTING_AUDIO_FILTER => {
+                kvs::keys::GBA_AUDIO_FILTER.set(&(value == 1));
+                let _ = device.fpga.write_u32(fpga::REG_CTRL_AUDIO_FILTER, value);
             }
             _ => {}
         }

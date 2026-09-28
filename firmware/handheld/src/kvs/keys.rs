@@ -36,6 +36,12 @@ pub static GBA_COLOR_PROFILE: KvsKey<i32> = KvsKey::new_with_default("gba-colors
 /// Whether to enable Game Boy Player functionality
 pub static GBA_ENABLE_GBP: KvsKey<bool> = KvsKey::new_with_default("gba-enable-gbp", true);
 
+/// Whether the GBA core uses the FPGA's CIC audio filter.
+pub static GBA_AUDIO_FILTER: KvsKey<bool> = KvsKey::new_with_default("gba-audio-fx", true);
+
+/// Whether the Gameboy (DMG/CGB) core uses the FPGA's CIC audio filter.
+pub static GB_AUDIO_FILTER: KvsKey<bool> = KvsKey::new_with_default("gb-audio-fx", true);
+
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);
 
@@ -64,6 +70,8 @@ pub fn flush_all() {
     GBA_SKIP_BOOT_ANIM.flush();
     GBA_COLOR_PROFILE.flush();
     GBA_ENABLE_GBP.flush();
+    GBA_AUDIO_FILTER.flush();
+    GB_AUDIO_FILTER.flush();
     STARTUP_ACTION.flush();
     LAST_FIRMWARE_VERSION.flush();
     GBA_BIOS_WARNING.flush();

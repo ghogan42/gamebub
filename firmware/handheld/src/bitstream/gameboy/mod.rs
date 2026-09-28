@@ -49,6 +49,7 @@ const SETTING_RESET: u16 = 0;
 const SETTING_GB_MODE: u16 = 1;
 const SETTING_GBC_COLOR_CORRECTIONS: u16 = 2;
 const SETTING_GB_COLOR_PALETTE: u16 = 3;
+const SETTING_AUDIO_FILTER: u16 = 5;
 
 #[derive(Debug, Error)]
 pub enum GameboyError {
@@ -229,6 +230,14 @@ impl Gameboy {
                             })
                             .collect(),
                     },
+                },
+                CoreSetting {
+                    id: SETTING_AUDIO_FILTER,
+                    label: "Audio Filter".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 1,
+                    inner: CoreSettingType::Checkbox { value: 1 },
                 },
             ]
             .into_iter()
@@ -416,6 +425,10 @@ impl CoreHandler for Gameboy {
                 SETTING_GB_COLOR_PALETTE,
                 kvs::keys::DMG_COLOR_PALETTE.get().unwrap() as u32,
             ),
+            (
+                SETTING_AUDIO_FILTER,
+                kvs::keys::GB_AUDIO_FILTER.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -447,6 +460,10 @@ impl CoreHandler for Gameboy {
                     .get(value as usize)
                     .unwrap_or(&dmg_palette::PALETTES[0]);
                 let _ = palette.load(&mut device);
+            }
+            SETTING_AUDIO_FILTER => {
+                kvs::keys::GB_AUDIO_FILTER.set(&(value == 1));
+                let _ = device.fpga.write_u32(fpga::REG_CTRL_AUDIO_FILTER, value);
             }
             _ => {}
         }

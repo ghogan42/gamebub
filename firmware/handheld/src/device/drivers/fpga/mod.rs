@@ -28,6 +28,9 @@ pub const REG_CTRL_BUTTON_FORCE: u32 = 0xF100_1008;
 pub const REG_CTRL_DOCK: u32 = 0xF100_100C;
 pub const REG_CTRL_FOCUS: u32 = 0xF100_1010;
 pub const REG_CTRL_VIBRATE: u32 = 0xF100_1014;
+/// Audio output filter: 0 = original 48 kHz sample-and-hold, 1 = order-3 CIC
+/// decimator. Resets to 0 on FPGA reconfiguration.
+pub const REG_CTRL_AUDIO_FILTER: u32 = 0xF100_1024;
 
 pub const REG_CTRL_CMD_HOST: u32 = 0xF100_1100;
 pub const REG_CTRL_CMD_CORE: u32 = 0xF100_1104;

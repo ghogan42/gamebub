@@ -40,12 +40,18 @@ pub static GBA_ENABLE_GBP: KvsKey<bool> = KvsKey::new_with_default("gba-enable-g
 /// 4 = Scanlines Light, 5 = Scanlines Dark.
 pub static GBA_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gba-pixel-fx", 0);
 
+/// Whether the GBA core uses the FPGA's CIC audio filter.
+pub static GBA_AUDIO_FILTER: KvsKey<bool> = KvsKey::new_with_default("gba-audio-fx", true);
+
 /// Gameboy pixel effect setting-list index: 0 = None, 1 = Grid, 2 = Stripe,
 /// 3 = RGB Grid, 4 = Shadow 1, 5 = Shadow 2, 6 = Shadow 3. Translated to
 /// the shared FPGA REG_CTRL_PIXEL_EFFECT hardware mode numbers in
 /// `bitstream/gameboy/mod.rs` (Shadow modes are hw modes 6-8 in DMG mode,
 /// 9-11 in CGB mode).
 pub static GB_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gb-pixel-fx", 0);
+
+/// Whether the Gameboy (DMG/CGB) core uses the FPGA's CIC audio filter.
+pub static GB_AUDIO_FILTER: KvsKey<bool> = KvsKey::new_with_default("gb-audio-fx", true);
 
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);
@@ -84,7 +90,9 @@ pub fn flush_all() {
     GBA_COLOR_PROFILE.flush();
     GBA_ENABLE_GBP.flush();
     GBA_PIXEL_EFFECT.flush();
+    GBA_AUDIO_FILTER.flush();
     GB_PIXEL_EFFECT.flush();
+    GB_AUDIO_FILTER.flush();
     STARTUP_ACTION.flush();
     COLOR_TEMPERATURE.flush();
     EXTRA_COLOR_FIX.flush();

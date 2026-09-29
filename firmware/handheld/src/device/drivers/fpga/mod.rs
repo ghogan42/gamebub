@@ -48,6 +48,9 @@ pub const REG_CTRL_DMG_SHADOW_BG: u32 = 0xF100_101C;
 /// Resets on FPGA reconfiguration, so it must be re-applied after every
 /// bitstream load -- see `bitstream::program_fpga`.
 pub const REG_CTRL_COLOR_FIX: u32 = 0xF100_1020;
+/// Audio output filter: 0 = original 48 kHz sample-and-hold, 1 = order-3 CIC
+/// decimator. Resets to 0 on FPGA reconfiguration.
+pub const REG_CTRL_AUDIO_FILTER: u32 = 0xF100_1024;
 
 pub const REG_CTRL_CMD_HOST: u32 = 0xF100_1100;
 pub const REG_CTRL_CMD_CORE: u32 = 0xF100_1104;

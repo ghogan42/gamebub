@@ -50,6 +50,7 @@ const SETTING_GB_MODE: u16 = 1;
 const SETTING_GBC_COLOR_CORRECTIONS: u16 = 2;
 const SETTING_GB_COLOR_PALETTE: u16 = 3;
 const SETTING_PIXEL_EFFECT: u16 = 4;
+const SETTING_AUDIO_FILTER: u16 = 5;
 
 /// GB_PIXEL_EFFECT's setting-list index doesn't match the shared hardware
 /// mode numbers 1:1 -- hw modes 4/5 (Scanlines) are GBA-only, so the
@@ -285,6 +286,14 @@ impl Gameboy {
                         .collect(),
                     },
                 },
+                CoreSetting {
+                    id: SETTING_AUDIO_FILTER,
+                    label: "Audio Filter".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 1,
+                    inner: CoreSettingType::Checkbox { value: 1 },
+                },
             ]
             .into_iter()
             .collect(),
@@ -475,6 +484,10 @@ impl CoreHandler for Gameboy {
                 SETTING_PIXEL_EFFECT,
                 kvs::keys::GB_PIXEL_EFFECT.get().unwrap() as u32,
             ),
+            (
+                SETTING_AUDIO_FILTER,
+                kvs::keys::GB_AUDIO_FILTER.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -537,6 +550,10 @@ impl CoreHandler for Gameboy {
                     fpga::REG_CTRL_PIXEL_EFFECT,
                     pixel_effect_hw_mode(is_dmg, value as i32),
                 );
+            }
+            SETTING_AUDIO_FILTER => {
+                kvs::keys::GB_AUDIO_FILTER.set(&(value == 1));
+                let _ = device.fpga.write_u32(fpga::REG_CTRL_AUDIO_FILTER, value);
             }
             _ => {}
         }

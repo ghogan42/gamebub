@@ -5,7 +5,7 @@ import chisel3.util._
 import _root_.circt.stage.ChiselStage
 import lib.mem.{MemoryInterface, MemoryMap, RegisterMap}
 import lib.util.{FractionalDivider, ButtonFilter}
-import lib.video.{Color, ColorARGB, ColorRGB}
+import lib.video.{Color, ColorARGB, ColorRGB, WhitePointFix}
 import net.gamebub.framework.{Core, CoreException}
 import net.gamebub.framework.interface._
 import platform.handheld.display._
@@ -87,6 +87,7 @@ object HandheldTop extends App {
         overlayWidth = 360,
         overlayHeight = 240,
         numSdramChips = 2,
+        whitePointFix = true,
       )
       case _ => throw new IllegalArgumentException("invalid revision " + name)
     }
@@ -452,6 +453,20 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     val b = UInt(8.W)
   }))
 
+  /**
+   * Final white-point correction applied to the composited output -- game
+   * pixels and UI overlay alike -- just before the panel bit-depth
+   * conversion. 0 = None, 1 = D75, 2 = D65. See [[lib.video.WhitePointFix]].
+   *
+   * Unlike the in-core `ColorCorrection` stage this is part of the
+   * framework, so it survives across cores; but like every other register
+   * here it resets on FPGA reconfiguration, so firmware must re-apply it
+   * after each bitstream load.
+   */
+  val controlColorFix = RegInit(0.U.asTypeOf(new Bundle() {
+    val mode = UInt(2.W)
+  }))
+
   val controlCommandHost = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
   val controlCommandCore = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
 
@@ -490,6 +505,7 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
       0x1014 -> RegisterMap.Entry.w(controlVibrate),
       0x1018 -> RegisterMap.Entry.rw(controlPixelEffect),
       0x101C -> RegisterMap.Entry.rw(controlDmgShadowBg),
+      0x1020 -> RegisterMap.Entry.rw(controlColorFix),
 
       0x1100 -> RegisterMap.Entry.rw(controlCommandHost),
       0x1104 -> RegisterMap.Entry.rw(controlCommandCore),
@@ -820,7 +836,20 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     )
     dpiDriverIo.lastRenderedFrame := lastFrameComplete
     io.lcd := dpiDriverIo.signals
-    val lcdData = videoOutput.convertTo(
+    // Final white-point correction. Sits after the overlay composite above,
+    // so it applies to the UI as well as game pixels, and is the last thing
+    // to touch a pixel before the panel bit-depth conversion. rev4 only --
+    // the gains were measured from its panel (see Revision.whitePointFix).
+    val correctedOutput = if (revision.whitePointFix) {
+      val colorFixConfig = XpmCdcHandshake.continuous(clock, controlColorFix)
+      val whitePointFix = Module(new WhitePointFix)
+      whitePointFix.io.mode := colorFixConfig.mode
+      whitePointFix.io.in := videoOutput
+      whitePointFix.io.out
+    } else {
+      videoOutput
+    }
+    val lcdData = correctedOutput.convertTo(
       ColorRGB(
         revision.displayColorDepth,
         revision.displayColorDepth,
@@ -1115,4 +1144,9 @@ case class Revision(
   overlayWidth: Int,
   overlayHeight: Int,
   numSdramChips: Int,
+  /// Whether to instantiate the final white-point correction stage
+  /// ([[lib.video.WhitePointFix]]). Its gains were measured from the rev4
+  /// ILI9806E panel and mean nothing for the others, which haven't been
+  /// characterized -- so only rev4 gets the logic.
+  whitePointFix: Boolean = false,
 )

@@ -263,4 +263,117 @@ where
         // No-op
         Ok(())
     }
+
+    /// Select a command page, per the `0xFF,[0xFF,0x98,0x06,0x04,page]`
+    /// pattern used throughout `init()`.
+    fn select_page(&mut self, page: u8) -> Result<(), Error> {
+        self.write_cmd(0xFF, &[0xFF, 0x98, 0x06, 0x04, page])
+    }
+
+    /// Write a "Digital Gamma Control" table (macro: page 2, registers
+    /// 0x00-0x3F) as a linear ramp: register `reg` gets an adjustment
+    /// magnitude scaled by `reg / last_reg`, so point 0 is unadjusted and
+    /// `last_reg` gets the full `r_mag`/`b_mag`. Magnitudes are 0..=7.
+    ///
+    /// Two facts about the nibble, measured on a rev4 panel, drive this
+    /// shape:
+    ///
+    /// 1. It is **sign-magnitude**: bit 3 selects the direction and bits
+    ///    2:0 the magnitude, so 0x0 and 0x8 both mean "no adjustment",
+    ///    0x9..=0xF cut the channel and 0x7..=0x1 boost it. A nibble of 0
+    ///    is therefore *not* a neutral value to ramp up from -- ramping
+    ///    0->15 sweeps from max boost through neutral to max cut. This
+    ///    writes `0x8 | magnitude` throughout.
+    /// 2. It is a constant *code offset* of roughly 2 codes per magnitude
+    ///    step, not a gain. A uniform table therefore hits a channel hard
+    ///    in the shadows and barely at all at white. Holding the output
+    ///    *ratio* constant -- which is what keeps the ramp neutral -- needs
+    ///    an offset proportional to the code, and since register index is
+    ///    proportional to code, that is a linear ramp of the magnitude.
+    ///
+    /// Per the datasheet's write-order flowchart, writing all registers
+    /// 0x00..=last_reg in order -- ending on last_reg -- is what latches the
+    /// table.
+    fn write_gamma_ramp(
+        &mut self,
+        page: u8,
+        last_reg: u8,
+        r_mag: u8,
+        b_mag: u8,
+    ) -> Result<(), Error> {
+        self.select_page(page)?;
+        let scale = |mag: u8, reg: u8| {
+            // Round to nearest rather than truncating.
+            let n = ((mag & 0x7) as u16 * reg as u16 + last_reg as u16 / 2) / last_reg as u16;
+            // Bit 3 = "adjust downward"; with magnitude 0 this is still neutral.
+            0x8 | (n as u8 & 0x7)
+        };
+        for reg in 0..=last_reg {
+            let value = (scale(r_mag, reg) << 4) | scale(b_mag, reg);
+            self.write_cmd(reg, &[value])?;
+        }
+        Ok(())
+    }
+
+    /// Apply a color-temperature preset via the panel's "Digital 3 Gamma"
+    /// feature (`En_3G`): independently adjusts the Red and Blue gamma
+    /// curves relative to the shared base curve (which also drives Green,
+    /// written once in `init()` via the Positive/Negative Gamma Control
+    /// commands, 0xA0-0xAF/0xC0-0xCF).
+    ///
+    /// `preset`: 0 = Normal (feature disabled, matches default shipped
+    /// behavior), 1 = Warm, 2 = Cool. Anything else falls back to Normal.
+    ///
+    /// Only the macro table (page 2, 64 points, coarse) is written -- the
+    /// micro tables (pages 3/4, 256 points, meant for fine trims layered on
+    /// top of macro's shape) are intentionally left untouched.
+    ///
+    /// Values are from spectrophotometer measurements of a rev4 panel.
+    /// Each preset ramps one channel to the field's maximum magnitude and
+    /// leaves the other neutral:
+    ///
+    /// - Warm cuts blue only. Red is deliberately left neutral: boosting it
+    ///   compressed red near white (the panel runs out of range there)
+    ///   while contributing nothing to the white point, since the
+    ///   adjustment can't be realized at full drive.
+    /// - Cool is the mirror image by symmetry, and is **not yet verified**
+    ///   against measurements.
+    ///
+    /// Ramped to magnitude 7, this is a ~12% cut held constant across the
+    /// whole ramp -- all the 3G feature can do without disturbing ramp
+    /// neutrality. It moves white from ~16750K to ~13500K.
+    pub fn set_color_temperature(&mut self, preset: i32) -> Result<(), Error> {
+        struct Gamma3Preset {
+            enable: bool,
+            r: u8,
+            b: u8,
+        }
+        let preset = match preset {
+            1 => Gamma3Preset {
+                enable: true,
+                r: 0,
+                b: 7,
+            },
+            2 => Gamma3Preset {
+                enable: true,
+                r: 7,
+                b: 0,
+            },
+            _ => Gamma3Preset {
+                enable: false,
+                r: 0,
+                b: 0,
+            },
+        };
+
+        // Macro adjustment (page 2, 64 points, registers 0x00-0x3F).
+        self.write_gamma_ramp(0x02, 0x3F, preset.r, preset.b)?;
+        // Digital 3 Gamma Enable (D3GE), register 0x40, still page 2.
+        self.write_cmd(0x40, &[preset.enable as u8])?;
+
+        // Back to page 0 for normal commands, matching init()'s convention.
+        self.select_page(0x00)?;
+
+        Ok(())
+    }
 }

@@ -40,6 +40,14 @@ pub const REG_CTRL_PIXEL_EFFECT: u32 = 0xF100_1018;
 /// approximate -- see `dmg_palette::DmgPalette::background_rgb888_approx`).
 /// Not used by the CGB Shadow effects (hw modes 9-11).
 pub const REG_CTRL_DMG_SHADOW_BG: u32 = 0xF100_101C;
+/// Final white-point correction, applied to the composited output (UI
+/// overlay included) just before the panel bit-depth conversion:
+/// 0 = None, 1 = D75, 2 = D65. Distinct from the per-core
+/// `ColorCorrection` stage, which only tints game pixels.
+///
+/// Resets on FPGA reconfiguration, so it must be re-applied after every
+/// bitstream load -- see `bitstream::program_fpga`.
+pub const REG_CTRL_COLOR_FIX: u32 = 0xF100_1020;
 
 pub const REG_CTRL_CMD_HOST: u32 = 0xF100_1100;
 pub const REG_CTRL_CMD_CORE: u32 = 0xF100_1104;

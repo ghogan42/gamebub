@@ -9,6 +9,7 @@ use super::slint::{
     Backend, MainWindow, ScreenId, SettingDatetime, SettingEntry, SettingType, SettingValue,
 };
 
+mod color_test;
 mod cores;
 mod game;
 mod main_menu;
@@ -31,6 +32,7 @@ pub struct UiState {
     core_file_select_directory: PathBuf,
     core_file_select_filename: String,
     core_file_select_timer: Timer,
+    color_test_index: usize,
 }
 
 impl UiState {
@@ -45,6 +47,7 @@ impl UiState {
             core_file_select_directory: PathBuf::new(),
             core_file_select_filename: String::new(),
             core_file_select_timer: Timer::default(),
+            color_test_index: 0,
         };
         let state = Rc::new(RefCell::new(state));
         state.borrow_mut().setup(state.clone(), device);
@@ -76,6 +79,7 @@ impl UiState {
         self.setup_game(&state, device);
         self.setup_tools(&state, device);
         self.setup_settings(&state, device);
+        self.setup_color_test(&state, device);
         self.setup_cores(&state, device);
 
         // Check for first boot
@@ -105,6 +109,7 @@ impl UiState {
             log::info!("Screen enter: {:?}", screen);
             match screen {
                 ScreenId::Settings => state_.borrow_mut().on_settings_enter(),
+                ScreenId::ColorTest => state_.borrow_mut().on_color_test_enter(),
                 _ => {}
             }
         });

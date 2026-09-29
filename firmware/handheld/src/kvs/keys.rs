@@ -50,6 +50,14 @@ pub static GB_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gb-pixel-fx"
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);
 
+/// Screen color temperature preset: 0 = Normal, 1 = Warm, 2 = Cool. Only
+/// takes effect on rev4 (ILI9806E).
+pub static COLOR_TEMPERATURE: KvsKey<i32> = KvsKey::new_with_default("color-temp", 0);
+
+/// Final white-point correction applied in the FPGA to everything on screen,
+/// UI included. 0 = None, 1 = D75, 2 = D65. Only takes effect on rev4.
+pub static EXTRA_COLOR_FIX: KvsKey<i32> = KvsKey::new_with_default("color-fix", 0);
+
 /// Last firmware version
 pub static LAST_FIRMWARE_VERSION: KvsKey<String> = KvsKey::new("last-fw-version");
 
@@ -78,6 +86,8 @@ pub fn flush_all() {
     GBA_PIXEL_EFFECT.flush();
     GB_PIXEL_EFFECT.flush();
     STARTUP_ACTION.flush();
+    COLOR_TEMPERATURE.flush();
+    EXTRA_COLOR_FIX.flush();
     LAST_FIRMWARE_VERSION.flush();
     GBA_BIOS_WARNING.flush();
     LAST_CORE.flush();

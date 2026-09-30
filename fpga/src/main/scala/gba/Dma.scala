@@ -67,6 +67,11 @@ class Dma extends Module {
   // Whether any channel is active and in the "store" phase.
   val isAnyChannelStoring = WireDefault(false.B)
 
+  // DMA data latch, shared by all channels. Loads from below EWRAM (BIOS, unmapped; also
+  // DMA0 "ROM" sources, which are masked into this range) don't update it, so the store
+  // repeats the last value transferred by any channel.
+  val dataLatch = Reg(UInt(32.W))
+
   for (i <- 0 until 4) {
     val configSource = regConfigSource(i)
     val configDest = regConfigDest(i)
@@ -84,8 +89,8 @@ class Dma extends Module {
     val regInitial = Reg(Bool())  // Whether this is the initial load-store cycle.
     val regAccessedCart = Reg(Bool()) // Whether the cartridge has already been accessed this cycle
     val regStage = Reg(UInt(1.W))
-    val dataLatch = Reg(UInt(32.W))
     val regSourceAddressHalfword = Reg(UInt(1.W))
+    val regSourceInvalid = Reg(Bool())
 
     val busActive = WireDefault(false.B)
     io.irq(i) := false.B
@@ -167,6 +172,7 @@ class Dma extends Module {
         }
         // Complete Store (if not initial)
         regSourceAddressHalfword := regSource(1)
+        regSourceInvalid := regSource(regSource.getWidth - 1, 25) === 0.U
 
         // Check if the DMA is complete.
         when (bus.CLKEN) {
@@ -202,7 +208,7 @@ class Dma extends Module {
         }
       } .otherwise {
         // Complete Load
-        when (bus.CLKEN) {
+        when (bus.CLKEN && !regSourceInvalid) {
           when (isSizeWord) {
             dataLatch := bus.RDATA
           } .otherwise {

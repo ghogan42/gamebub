@@ -66,7 +66,13 @@ class Apu extends Module {
   io.mmio <> MmioMap(
     // SOUNDCNT_L / H
     0x80 -> MmioMap.Entry(
-      MmioMap.ReadFn(regPsgVolume, regPsgPanning, regMixControl, regDirectControl),
+      // Unused bits (SOUNDCNT_L bits 3, 7) and FIFO resets (SOUNDCNT_H bits 11, 15) read as 0.
+      MmioMap.ReadFn(
+        regPsgVolume.asUInt & "b1110111".U,
+        regPsgPanning,
+        regMixControl,
+        regDirectControl.asUInt & "h77".U,
+      ),
       MmioMap.WriteFn((enable, data, mask) => {
         MmioMap.WriteFn(regPsgVolume, regPsgPanning, regMixControl, regDirectControl).fn(enable, data, mask)
         val newDirectControl = data(31, 24).asTypeOf(new ApuRegisters.DirectControl)

@@ -25,6 +25,8 @@ class MMIO(numTargets: Int) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val mem = new TargetInterface(32.W)
+    /// Value returned for unmapped / write-only registers
+    val openBusData = Input(UInt(32.W))
   })
   private val logger = Logger("mmio", enable = io.enable)
   val targets: Seq[MmioTarget] = Seq.fill(numTargets)(IO(Flipped(new MmioTarget)))
@@ -33,11 +35,13 @@ class MMIO(numTargets: Int) extends Module {
   val queuedWrite = RegInit(false.B)
   val queuedAddress = Reg(UInt(9.W))
   val queuedMask = Reg(UInt(4.W))
+  /// Whether the queued access is within the register area (0x000-0x7FF); nothing is mapped above.
+  val queuedInRange = Reg(Bool())
 
   val isValid = VecInit(targets.map(_.valid)).asUInt.orR
   for (target <- targets) {
     target.address := queuedAddress
-    target.request := queuedRequest && io.enable
+    target.request := queuedRequest && queuedInRange && io.enable
     target.write := queuedWrite
     target.mask := queuedMask
     target.dataWrite := io.mem.dataWrite
@@ -46,8 +50,7 @@ class MMIO(numTargets: Int) extends Module {
   when (isValid) {
     io.mem.dataRead := Mux1H(targets.map(t => (t.valid, t.dataRead)))
   } .otherwise {
-    // TODO: handle open bus
-    io.mem.dataRead := 0.U
+    io.mem.dataRead := io.openBusData
   }
 
   io.mem.done := false.B
@@ -67,6 +70,7 @@ class MMIO(numTargets: Int) extends Module {
       queuedWrite := io.mem.write
       // TODO: handle I/O isn't actually mirrored except for one register?
       queuedAddress := io.mem.address >> 2
+      queuedInRange := io.mem.address(23, 11) === 0.U
       queuedMask := io.mem.mask
     }
   }

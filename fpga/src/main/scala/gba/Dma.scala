@@ -58,7 +58,8 @@ class Dma extends Module {
       (0xB0 + (i * 12)) -> MmioMap.Entry.w(regConfigSource(i)),
       (0xB4 + (i * 12)) -> MmioMap.Entry.w(regConfigDest(i)),
       (0xB8 + (i * 12)) -> MmioMap.Entry(
-        MmioMap.ReadFn(0.U(8.W), regConfigControl(i)),
+        // Count is write-only (reads 0); control bits 0-4 are unused and bit 11 (DRQ) only exists on DMA3.
+        MmioMap.ReadFn(0.U(8.W), regConfigControl(i).asUInt & (if (i == 3) "hFFE0" else "hF7E0").U),
         MmioMap.WriteFn(regConfigCount(i), regConfigControl(i))
       )
     ))

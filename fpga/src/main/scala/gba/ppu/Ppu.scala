@@ -161,7 +161,11 @@ class Ppu extends Module {
         }
       })
     ),
-    0x8 -> MmioMap.Entry.rw16(regBgControl(0), regBgControl(1)),
+    // BG0/BG1 have no affine wraparound bit (bit 13 reads as 0).
+    0x8 -> MmioMap.Entry(
+      MmioMap.ReadFn(regBgControl(0).asUInt & "hDFFF".U, regBgControl(1).asUInt & "hDFFF".U),
+      MmioMap.WriteFn(regBgControl(0), regBgControl(1)),
+    ),
     0xC -> MmioMap.Entry.rw16(regBgControl(2), regBgControl(3)),
     0x10 -> MmioMap.Entry.w16(regBgOffX(0), regBgOffY(0)),
     0x14 -> MmioMap.Entry.w16(regBgOffX(1), regBgOffY(1)),

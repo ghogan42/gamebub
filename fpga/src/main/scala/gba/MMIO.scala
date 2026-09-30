@@ -25,6 +25,8 @@ class MMIO(numTargets: Int) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val mem = new TargetInterface(32.W)
+    /// Value returned for unmapped / write-only registers
+    val openBusData = Input(UInt(32.W))
   })
   private val logger = Logger("mmio", enable = io.enable)
   val targets: Seq[MmioTarget] = Seq.fill(numTargets)(IO(Flipped(new MmioTarget)))
@@ -50,8 +52,7 @@ class MMIO(numTargets: Int) extends Module {
     // Stubbed out special "Internal Memory Control" register
     io.mem.dataRead := "h0D000020".U
   } .otherwise {
-    // TODO: handle open bus
-    io.mem.dataRead := 0.U
+    io.mem.dataRead := io.openBusData
   }
 
   io.mem.done := false.B

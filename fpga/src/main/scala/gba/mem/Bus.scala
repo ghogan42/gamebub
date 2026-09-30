@@ -50,6 +50,9 @@ class Bus(
 
     /// Target ports
     val targetPort = MixedVec(targets.map(t => Flipped(new TargetInterface(BusAccessWidth.toWidth(t.dataWidth)))))
+
+    /// Current CPU open bus value (last data read on the bus)
+    val openBusData = Output(UInt(32.W))
   })
   val logger = Logger("bus", enable = io.enable)
 
@@ -81,6 +84,7 @@ class Bus(
   val regLastDataRead = Reg(UInt(32.W))
 
   requestDataRead := regLastDataRead
+  io.openBusData := regLastDataRead
 
   for ((target, i) <- io.targetPort.zipWithIndex) {
     val metadata = targets(i)

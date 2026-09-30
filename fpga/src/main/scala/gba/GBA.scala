@@ -72,6 +72,7 @@ class GBA extends Module {
   val mmio = Module(new MMIO(numTargets = 9))
   mmio.io.enable := io.enable
   bus.io.targetPort(3) <> mmio.io.mem
+  mmio.io.openBusData := bus.io.openBusData
 
   // BIOS
   val bios = Module(new Bios)

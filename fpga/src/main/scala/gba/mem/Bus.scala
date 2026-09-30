@@ -111,7 +111,10 @@ class Bus(
         }
       }
       case BusAccessWidth.Halfword => {
-        target.dataWrite := Mux(regAccessAddress(1), requestDataWrite(31, 16), requestDataWrite(15, 0))
+        // Split word accesses write the low half first, then the high half, regardless of
+        // address bit 1 (misaligned word stores are force-aligned).
+        val upperHalf = Mux(regAccessSplit, regAccessSplitPhase === 1.U, regAccessAddress(1))
+        target.dataWrite := Mux(upperHalf, requestDataWrite(31, 16), requestDataWrite(15, 0))
         target.mask := Mux(requestAddress(1), requestMask(3, 2), requestMask(1, 0))
         when (selectedNow) {
           requestDataRead := Fill(2, target.dataRead)
@@ -200,6 +203,10 @@ class Bus(
           }
         } .otherwise {
           io.initiatorPort.RDATA := Cat(requestDataRead(15, 0), regSplitBuffer)
+          // Open bus sees the full word from a split read (e.g. ARM opcode fetch from ROM).
+          when (!regAccessWrite) {
+            regLastDataRead := Cat(requestDataRead(15, 0), regSplitBuffer)
+          }
           // io.initiatorPort.CLKEN is set above, because isAvailable is true.
         }
       }

@@ -91,6 +91,8 @@ class EmulatedCartridge extends Module {
   val regMemRomPendingAddress = Reg(UInt(24.W))
   /// Last data read from ROM memory interface
   val regMemRomReadData = Reg(UInt(16.W))
+  /// Whether the requested ROM address is past the end of the ROM.
+  val romOutOfBounds = Cat(io.interface.reqAddress, 0.U(1.W)) > io.romSize
   /// Whether a ram request is starting this cycle.
   val ramStart = WireDefault(false.B)
 
@@ -143,8 +145,11 @@ class EmulatedCartridge extends Module {
 
     when (io.interface.reqRom) {
       logger.debug(cf"ROM request start: addr=0x${io.rom.address << 1}%x peri=${romPeripheralSelected}")
-      when (!romPeripheralSelected) {
-        // TODO handle out-of-bounds ROM request
+      when (romOutOfBounds && !romPeripheralSelected) {
+        // Reads beyond the end of the ROM return the (halfword) address, like an
+        // unconnected cartridge bus. No memory request needed.
+        regMemRomReadData := io.interface.reqAddress(15, 0)
+      } .elsewhen (!romPeripheralSelected) {
         io.rom.enable := true.B
         io.rom.address := io.interface.reqAddress
         regMemRomBusy := true.B

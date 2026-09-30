@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
 #include "cartridge.hpp"
 #include "framebuffer.hpp"
@@ -18,6 +19,8 @@ public:
     void reset();
     Framebuffer& getFramebuffer() { return framebuffer; }
     std::vector<int16_t>& getAudioSampleBuffer();
+    std::vector<uint8_t>& getBackup() { return cart->ram; }
+    std::vector<uint8_t> readMemory(const std::string& region) { return {}; }
 
     static int width() { return 160; }
     static int height() { return 144; }

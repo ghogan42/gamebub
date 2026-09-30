@@ -170,6 +170,22 @@ void Simulator::stepAudio()
     }
 }
 
+std::vector<uint8_t> Simulator::readMemory(const std::string& region)
+{
+    // Note: assumes little-endian
+    std::vector<uint8_t> data;
+    if (region == "iwram") {
+        auto& mem = top->rootp->SimGba__DOT__gba__DOT__iwram__DOT__mem_sram_ext__DOT__Memory;
+        data.resize(32 * 1024);
+        memcpy(data.data(), &mem, data.size());
+    } else if (region == "ewram") {
+        auto& mem = top->rootp->SimGba__DOT__ewram_sram_ext__DOT__Memory;
+        data.resize(256 * 1024);
+        memcpy(data.data(), &mem, data.size());
+    }
+    return data;
+}
+
 std::vector<int16_t>& Simulator::getAudioSampleBuffer()
 {
     return audioSampleBuffer;

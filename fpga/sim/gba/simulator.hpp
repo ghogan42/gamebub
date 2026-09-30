@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
 #include "framebuffer.hpp"
 #include "input.hpp"
@@ -18,6 +19,9 @@ public:
     void reset();
     Framebuffer& getFramebuffer() { return framebuffer; }
     std::vector<int16_t>& getAudioSampleBuffer();
+    std::vector<uint8_t>& getBackup() { return cartridge.backup; }
+    // Raw contents of an internal memory ("iwram", "ewram"); empty if unknown.
+    std::vector<uint8_t> readMemory(const std::string& region);
 
     static int width() { return 240; }
     static int height() { return 160; }

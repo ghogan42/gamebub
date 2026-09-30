@@ -26,6 +26,8 @@ COMMON_FILES: list[str] = [
     "sim/input.hpp",
     "sim/window.hpp",
     "sim/recording_writer.hpp",
+    "sim/script.hpp",
+    "sim/png.hpp",
     "sim/audio.cpp",
     "sim/framebuffer.cpp",
     "sim/main.cpp",
@@ -73,7 +75,7 @@ def build(
     args = [
         MILL_PATH,
         "-i",
-        "GameBub.runMain",
+        "root.runMain",
         sim.main_class,
         f"--target-dir={generate_root}",
     ]
@@ -107,7 +109,7 @@ def build(
         subprocess.check_output(["pkg-config", "sdl2", "--libs"]).decode().strip()
     )
     options = [
-        f'-CFLAGS "{sdl_cflags}"',
+        f'-CFLAGS "{sdl_cflags} -std=c++20"',
         f'-LDFLAGS "{sdl_libs}"',
         "-Wno-WIDTHEXPAND",
     ]
@@ -116,7 +118,12 @@ def build(
         "name": sim.name,
         "toplevel": sim.top_module,
         "files": files,
-        "tool_options": {"verilator": {"verilator_options": options}},
+        "tool_options": {
+            "verilator": {
+                "verilator_options": options,
+                "make_options": [f"-j{os.cpu_count()}", "OPT_FAST=-O2"],
+            }
+        },
     }
     backend = get_edatool("verilator")(edam=edam, work_root=build_root)
     backend.configure()

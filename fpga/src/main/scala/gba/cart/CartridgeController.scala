@@ -373,7 +373,14 @@ class CartridgeController extends Module {
 
       when (io.enable) {
         state := State.RamStage1
-        waitCounter := VecInit(2.U, 1.U, 0.U, 6.U)(regWaitControl.sram)
+        // Physical cartridge reads: keep nCS2/nRD low one cycle longer before sampling. The first
+        // cycle of the access only sets up the address, so nCS2/nRD were low one cycle less than on a
+        // GBA; an EZ-Flash Omega's emulated Flash then returned stale data for the first read after
+        // ROM activity (e.g. the Flash ID read -> Pokemon stops at a white screen). Adds a cycle to
+        // physical save reads (rare: boot / loading a save).
+        val physicalRead = !currentIsWrite && !io.cartridge.isEmulated
+        waitCounter := Mux(physicalRead, VecInit(3.U, 2.U, 1.U, 7.U)(regWaitControl.sram),
+          VecInit(2.U, 1.U, 0.U, 6.U)(regWaitControl.sram))
         // Physical cartridges: a Flash chip latches the address when /WE falls, so drive A0-15 and the
         // data for this whole cycle first (the AD bus may have been turning around from a ROM read),
         // then pull nWR low.

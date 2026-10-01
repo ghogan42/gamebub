@@ -7,7 +7,7 @@ import gba._
 import gba.apu.ApuOutput
 import gba.cart.emu.{EmulatedCartridge, VerificationEmulatedCartridge}
 import gba.ppu.PpuOutput
-import lib.log.Log
+import lib.log.{Log, Logger}
 import lib.mem.{MemoryInterface, PipelineMemoryInterface}
 
 object SimGba extends App {
@@ -44,6 +44,14 @@ class SimGba extends Module {
     val emuCartBackup = Flipped(new MemoryInterface(addressWidth = 17, dataWidth = 8))
     val emuCartStall = Output(Bool())
   })
+
+  // Cycle markers for trace logs (only emitted when LOG_LEVELS enables sim.cycle:debug).
+  val cycleLogger = Logger("sim.cycle", enable = io.enable)
+  val regCycle = RegInit(0.U(32.W))
+  when (io.enable) {
+    regCycle := regCycle + 1.U
+  }
+  cycleLogger.debug(cf"---- cycle ${regCycle}")
 
   val gba = Module(new GBA())
   gba.io.enable <> io.enable

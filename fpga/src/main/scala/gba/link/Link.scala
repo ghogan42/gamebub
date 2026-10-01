@@ -65,13 +65,27 @@ class Link extends Module {
     0.U(1.W),
   )
 
+  /// Pin levels as seen on the port: driven value for outputs, input level otherwise.
+  val pinLevels = ((io.port.dir.asUInt & io.port.out.asUInt) |
+    (~io.port.dir.asUInt & io.port.in.asUInt)).asTypeOf(new Link.Ports)
+
   io.irq := false.B
   io.mmio <> MmioMap(
-    0x120 -> MmioMap.Entry.rw16(regDataB0, regDataB1),
-    0x124 -> MmioMap.Entry.rw16(regDataB2, regDataB3),
-    // SIOCNT
+    // SIODATA32 is only writable by the CPU in Normal 32-bit mode (SIOMULTI0-3 are receive registers).
+    0x120 -> MmioMap.Entry(
+      MmioMap.ReadFn(regDataB0, regDataB1),
+      MmioMap.WriteFn((enable, data, mask) => {
+        when (enable && mode === Link.Mode.Normal && regSiocnt(12)) {
+          regDataB0 := MMIO.mask(regDataB0, data(15, 0), mask(1, 0))
+          regDataB1 := MMIO.mask(regDataB1, data(31, 16), mask(3, 2))
+        }
+      })
+    ),
+    0x124 -> MmioMap.Entry(MmioMap.ReadFn(regDataB2, regDataB3), MmioMap.WriteFn()),
+    // SIOCNT (+ SIODATA8 / SIOMLT_SEND, which reads as 0 in UART mode)
     0x128 -> MmioMap.Entry(
-      MmioMap.ReadFn(Cat(regDataA, 0.U(1.W), regSiocnt(14, 8), siocntReadValueLo)),
+      MmioMap.ReadFn(Cat(
+        Mux(mode === Link.Mode.Uart, 0.U, regDataA), 0.U(1.W), regSiocnt(14, 8), siocntReadValueLo)),
       MmioMap.WriteFn((enable, data, mask) => {
         when (enable) {
           regSiocnt := MMIO.mask(regSiocnt, data(15, 0), mask(1, 0))
@@ -85,7 +99,7 @@ class Link extends Module {
     0x134 -> MmioMap.Entry(
       MmioMap.ReadFn({
         val out = Wire(new Link.RegisterRcnt)
-        out.pinData := io.port.in.asUInt
+        out.pinData := pinLevels.asUInt
         out.pinDir := regGpioPinDir
         out.interrupt := regGpioInterrupt
         out._unused := 0.U
@@ -136,11 +150,13 @@ class Link extends Module {
         }
         (regJoyRecv, true.B)
       }),
-      MmioMap.WriteFn(regJoyRecv),
+      // Written by the JOY bus, not the CPU.
+      MmioMap.WriteFn(),
     ),
     // JOY_TRANS
     0x154 -> MmioMap.Entry(
-      MmioMap.ReadFn(regJoyTrans),
+      // Write-only.
+      MmioMap.ReadFn(0.U(32.W)),
       MmioMap.WriteFn((enable, data, mask) => {
         when (enable) {
           regJoyTrans := MMIO.mask(regJoyTrans, data, mask)
@@ -185,6 +201,16 @@ class Link extends Module {
   io.port.dir.so := false.B
   io.port.dir.sd := true.B
   io.port.dir.sc := false.B
+
+  // SIOCNT low byte outside Normal/Multi (which set it in their handlers):
+  // UART: R/W bits + receive FIFO empty (UART transfers are not implemented).
+  // GPIO/JOY: Normal-mode layout, with SI as the current pin level.
+  when (mode === Link.Mode.Uart) {
+    siocntReadValueLo := (regSiocnt(7, 0) & "h8F".U) | "h20".U
+    io.port.dir.sd := false.B
+  } .elsewhen (mode === Link.Mode.Gpio || mode === Link.Mode.Joybus) {
+    siocntReadValueLo := (regSiocnt(7, 0) & "h8B".U) | Cat(pinLevels.si, 0.U(2.W))
+  }
 
   val uartTimer = Module(new UartTimer)
   uartTimer.io.enable := io.enable

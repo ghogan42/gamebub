@@ -29,16 +29,20 @@ class Interrupt extends Module {
   val reg410 = RegInit(0.U(32.W))
 
   val irqActive = (regRequested.asUInt & regEnabled.asUInt) =/= 0.U
+  // Leaving HALT happens together with the (delayed) CPU IRQ.
+  val irqActiveDelayed = ShiftRegister(irqActive, Interrupt.CpuIrqDelay, false.B, io.enable)
   when (io.enable) {
     regRequested := (regRequested.asUInt | io.peripheralIrq.asUInt).asTypeOf(new Interrupt.Flags)
 
-    when (irqActive && regCpuHalt) {
+    when (irqActiveDelayed && regCpuHalt) {
       // Exiting HALT happens when IE & IF, regardless of IME (or CPU irq)
       regCpuHalt := false.B
       logger.info(cf"CPU resumed")
     }
   }
-  io.irq := ime(0) && irqActive
+  // The IRQ reaches the CPU a few cycles after IF/IE/IME say it should (matches hardware IRQ latency,
+  // e.g. mGBA suite timer IRQ tests). IF itself is set immediately.
+  io.irq := ShiftRegister(ime(0) && irqActive, Interrupt.CpuIrqDelay, false.B, io.enable)
   io.cpuHalt := regCpuHalt
 
   io.mmio <> MmioMap(
@@ -87,6 +91,9 @@ class Interrupt extends Module {
 }
 
 object Interrupt {
+  /// Cycles between an interrupt becoming active and the CPU IRQ line being raised.
+  val CpuIrqDelay = 3
+
   class Flags extends Bundle {
     val cartridge = Bool()
     val keypad = Bool()

@@ -4,7 +4,11 @@ import chisel3._
 import chisel3.util._
 import lib.log.Logger
 
-class TargetInterface(maxWidth: Width) extends Bundle {
+/// Bus target port.
+///
+/// `wide`: (halfword targets only) the target may complete the first half of a split word
+/// read with the full 32 bits at once (e.g. both halves from the ROM prefetch buffer).
+class TargetInterface(maxWidth: Width, wide: Boolean = false) extends Bundle {
   /// Byte-wise access address
   val address = Input(UInt(25.W))
   /// Whether an access is requested
@@ -30,12 +34,19 @@ class TargetInterface(maxWidth: Width) extends Bundle {
   val nextRequest = Input(Bool())
   /// Whether the next bus cycle will be a sequential request (to any target).
   val nextSeq = Input(Bool())
+
+  /// (wide targets) Whether this halfword read is the first half of a split word read.
+  val wideRequest = Option.when(wide)(Input(Bool()))
+  /// (wide targets) With done: the whole word was read (wideDataRead); skip the second half.
+  val wideDone = Option.when(wide)(Output(Bool()))
+  val wideDataRead = Option.when(wide)(Output(UInt(32.W)))
 }
 
 case class BusTarget(
   name: String,
   prefix: UInt,
   dataWidth: BusAccessWidth.Type,
+  wide: Boolean = false,
 )
 
 class Bus(
@@ -49,7 +60,7 @@ class Bus(
     val initiatorPort = Flipped(new BusInterface)
 
     /// Target ports
-    val targetPort = MixedVec(targets.map(t => Flipped(new TargetInterface(BusAccessWidth.toWidth(t.dataWidth)))))
+    val targetPort = MixedVec(targets.map(t => Flipped(new TargetInterface(BusAccessWidth.toWidth(t.dataWidth), t.wide))))
 
     /// Current CPU open bus value (last data read on the bus)
     val openBusData = Output(UInt(32.W))
@@ -69,6 +80,11 @@ class Bus(
   val anySelectedNow = WireDefault(false.B)
   val requestNextIsSequential = Wire(Bool())
   val splitPhase0Busy = WireDefault(false.B)
+  /// Whether the current target request is the first half of a split word read.
+  val requestWide = WireDefault(false.B)
+  /// Whether a wide target completed a whole split word read in phase 0.
+  val wideDoneNow = WireDefault(false.B)
+  val wideDataRead = WireDefault(0.U(32.W))
 
   val regAccessBusy = RegInit(false.B)
   val regAccessAddress = Reg(UInt(32.W))
@@ -104,6 +120,13 @@ class Bus(
     target.nextRequest :=
       (prefixMatches(io.initiatorPort.ADDR, metadata.prefix) && io.initiatorPort.MREQ) ||
         (splitPhase0Busy && selectedNow)
+    target.wideRequest.foreach(_ := requestWide && !requestWrite)
+    for (done <- target.wideDone; data <- target.wideDataRead) {
+      when (selectedNow && regAccessBusy && regAccessSplit && regAccessSplitPhase === 0.U && target.done && done) {
+        wideDoneNow := true.B
+        wideDataRead := data
+      }
+    }
 
     metadata.dataWidth match {
       case BusAccessWidth.Byte => {
@@ -154,7 +177,7 @@ class Bus(
   /// Whether there is an incoming request.
   val initiatorRequested = io.initiatorPort.MREQ
   /// Whether we can accept a new request.
-  val isAvailable = (!regAccessBusy || accessDone) && (!regAccessSplit || regAccessSplitPhase === 1.U)
+  val isAvailable = (!regAccessBusy || accessDone) && (!regAccessSplit || regAccessSplitPhase === 1.U || wideDoneNow)
 
   requestAddress := io.initiatorPort.ADDR
   requestSequential := io.initiatorPort.SEQ
@@ -188,7 +211,11 @@ class Bus(
       }
       regAccessBusy := false.B
 
-      when (regAccessSplit) {
+      when (regAccessSplit && wideDoneNow) {
+        // The target returned the whole word at once.
+        io.initiatorPort.RDATA := wideDataRead
+        regLastDataRead := wideDataRead
+      } .elsewhen (regAccessSplit) {
         when (regAccessSplitPhase === 0.U) {
           // Start the second half.
           requestEnable := true.B
@@ -227,6 +254,7 @@ class Bus(
           requestAddressAligned := requestAddress & "hFFFFFFFC".U(32.W)
           requestWrite := regAccessWrite
           requestIsData := regAccessIsData
+          requestWide := true.B
           splitPhase0Busy := true.B
         } .otherwise {
           requestEnable := true.B
@@ -257,6 +285,7 @@ class Bus(
         // Ensure the initial request is aligned to the word (to handle misaligned word requests).
         requestMask := "b1111".U(4.W)
         requestAddressAligned := requestAddress & "hFFFFFFFC".U(32.W)
+        requestWide := true.B
       }
     }
   }

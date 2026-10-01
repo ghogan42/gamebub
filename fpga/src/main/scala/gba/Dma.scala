@@ -45,6 +45,9 @@ class Dma extends Module {
     val stopVideo = Input(Bool())
 
     val busInitiator = Vec(4, new BusInterface)
+
+    /// Whether the CPU must be kept off the bus (DMA startup cycles).
+    val blockCpu = Output(Bool())
   })
   private val logger = Logger("dma", enable = io.enable)
 
@@ -73,6 +76,8 @@ class Dma extends Module {
   // repeats the last value transferred by any channel.
   val dataLatch = Reg(UInt(32.W))
 
+  io.blockCpu := false.B
+
   for (i <- 0 until 4) {
     val configSource = regConfigSource(i)
     val configDest = regConfigDest(i)
@@ -92,6 +97,9 @@ class Dma extends Module {
     val regStage = Reg(UInt(1.W))
     val regSourceAddressHalfword = Reg(UInt(1.W))
     val regSourceInvalid = Reg(Bool())
+    /// Remaining internal cycles at the end of a transfer (GBATEK: 2I), during which the DMA
+    /// still owns the bus.
+    val regFinishCycles = RegInit(0.U(2.W))
 
     val busActive = WireDefault(false.B)
     io.irq(i) := false.B
@@ -157,6 +165,18 @@ class Dma extends Module {
     }
     val isNotBlocked = !isAnyChannelStoring || regStage === 1.U || !regInitial
 
+    // The cycle the transfer completes, plus regFinishCycles more (2I total).
+    val isCompleting = active && regStage === 0.U && regCount === 0.U && !regInitial
+    when (isCompleting) {
+      io.blockCpu := true.B
+    }
+    when (regFinishCycles =/= 0.U) {
+      io.blockCpu := true.B
+      when (io.enable) {
+        regFinishCycles := regFinishCycles - 1.U
+      }
+    }
+
     // Run DMA
     when (io.enable && active && isNotBlocked) {
       when (regStage === 0.U) {
@@ -181,6 +201,7 @@ class Dma extends Module {
             logger.info(cf"${i}: complete")
             io.irq(i) := control.irq
             active := false.B
+            regFinishCycles := 1.U
             when (control.repeat && isAudioFifo) {
               // Audio fifo is forced at 4 words and fixed destination
               regCount := 4.U

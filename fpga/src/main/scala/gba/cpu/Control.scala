@@ -934,6 +934,7 @@ class Control extends Module {
     control.addressSource := AddressSource.Incrementer
     control.memWrite := false.B
     control.memWidth := Mux(nextThumb, BusAccessWidth.Halfword, BusAccessWidth.Word)
+    control.memProt.data := false.B  // opcode fetch
     control.memRequest := false.B
     control.memSequential := false.B
   }
@@ -942,6 +943,7 @@ class Control extends Module {
   private def completePrefetch(): Unit = {
     control.memWrite := false.B
     control.memWidth := Mux(nextThumb, BusAccessWidth.Halfword, BusAccessWidth.Word)
+    control.memProt.data := false.B  // opcode fetch
     control.memRequest := true.B
     control.memSequential := true.B
     control.advancePipeline := true.B
@@ -953,6 +955,7 @@ class Control extends Module {
     control.addressSource := AddressSource.Incrementer
     control.memWrite := false.B
     control.memWidth := Mux(nextThumb, BusAccessWidth.Halfword, BusAccessWidth.Word)
+    control.memProt.data := false.B  // opcode fetch
     control.memRequest := true.B
     control.memSequential := true.B
     control.advancePipeline := true.B
@@ -967,6 +970,7 @@ class Control extends Module {
     control.advancePipeline := true.B
     control.memWrite := false.B
     control.memWidth := Mux(nextThumb, BusAccessWidth.Halfword, BusAccessWidth.Word)
+    control.memProt.data := false.B  // opcode fetch
     control.memRequest := true.B
     control.memSequential := false.B
     dispatch := true.B

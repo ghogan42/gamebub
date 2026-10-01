@@ -187,8 +187,10 @@ class CartridgeController extends Module {
         currentRequestPort := romRequests.asUInt
 
         // Initial burst wait: 0 [extra] cycles if total waits is 2,
-        // otherwise 1. Physical cartridge reads: always a single address cycle (see RomStage0).
-        waitCounter := Mux(initialRomWait === 2.U || (!io.cartridge.isEmulated && !romRequestWrite), 0.U, 1.U)
+        // otherwise 1. Physical cartridges: reads always a single address cycle, writes always an
+        // address cycle + a data cycle (see RomStage0).
+        val physicalCart = !io.cartridge.isEmulated
+        waitCounter := Mux(physicalCart, romRequestWrite.asUInt, Mux(initialRomWait === 2.U, 0.U, 1.U))
       }
     } .elsewhen (ramTarget.request && reg_nCS2 === 1.U) {
       logger.debug(cf"Start Ram request addr=${ramTarget.address(15, 0)}%x wr=${ramTarget.write}")
@@ -229,7 +231,8 @@ class CartridgeController extends Module {
       io.cartridge.AHiDir := true.B
 
       val wait = Mux1H(currentRequestPort, waitRomFirst)
-      when (currentIsWrite && waitCounter === 0.U && wait =/= 2.U) {
+      val physicalWrite = currentIsWrite && !io.cartridge.isEmulated
+      when (currentIsWrite && waitCounter === 0.U && (wait =/= 2.U || physicalWrite)) {
         // If this is the second cycle of a two cycle initial wait, set WDATA output.
         io.cartridge.ADLoDir := true.B
         io.cartridge.ADLoOut := romRequestDataWrite
@@ -243,10 +246,14 @@ class CartridgeController extends Module {
           // latched A0-15 on nCS falling) and stays low for the rest of the access, like on a GBA.
           // Otherwise nRD would only be low for the last 1-2 cycles (1 cycle at the common 3-wait
           // setting), too short for slower cartridge ROMs (e.g. bootleg Flash ROMs) incl. the AD bus
-          // turnaround. Writes keep the address cycle(s) + a data cycle before nWR falls (some carts,
-          // e.g. EZ-Flash Omega, need the data set up before nWR). Total access time is unchanged.
+          // turnaround. Total access time is unchanged.
+          // Physical cartridge writes: an address cycle, a data cycle (nWR high; e.g. EZ-Flash Omega
+          // needs the data set up before nWR falls), then nWR low for at least 2 cycles (a 1 cycle
+          // pulse is too short for some carts, e.g. a bootleg Emerald's ROM-area writes). This adds a
+          // cycle to physical ROM writes at 3 or 2 first-access waits.
           val longReadStrobe = !io.cartridge.isEmulated && !currentIsWrite
-          waitCounter := Mux(longReadStrobe, VecInit(2.U, 1.U, 0.U, 6.U)(wait), VecInit(1.U, 0.U, 0.U, 5.U)(wait))
+          waitCounter := Mux(longReadStrobe, VecInit(2.U, 1.U, 0.U, 6.U)(wait),
+            Mux(physicalWrite, VecInit(1.U, 1.U, 1.U, 5.U)(wait), VecInit(1.U, 0.U, 0.U, 5.U)(wait)))
           when (currentIsWrite) {
             reg_nWR := 0.U
           } .otherwise {

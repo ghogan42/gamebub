@@ -109,10 +109,34 @@ class Ppu extends Module {
     }
   }
 
+  // BG enable delay: a background enabled mid-frame only appears after 3 scanline boundaries
+  // (immediately if enabled during VBlank or forced blank). Disabling is immediate.
+  val displayControlEffective = WireDefault(regDisplayControl)
+  locally {
+    val prevEnableBg = RegEnable(regDisplayControl.enableBg, 0.U, io.enable)
+    val enableDelay = RegInit(VecInit.fill(4)(0.U(2.W)))
+    val lineStart = tick === (1232 - 1).U
+    for (i <- 0 until 4) {
+      val enabled = regDisplayControl.enableBg(i)
+      when (io.enable) {
+        when (!enabled) {
+          enableDelay(i) := 0.U
+        } .elsewhen (!prevEnableBg(i)) {
+          enableDelay(i) := Mux(scanline >= 160.U || regDisplayControl.forceBlank, 0.U, 3.U)
+        } .elsewhen (lineStart && enableDelay(i) =/= 0.U) {
+          enableDelay(i) := enableDelay(i) - 1.U
+        }
+      }
+    }
+    displayControlEffective.enableBg := VecInit((0 until 4).map(i =>
+      regDisplayControl.enableBg(i) && enableDelay(i) === 0.U && !(prevEnableBg(i) === 0.U && scanline < 160.U && !regDisplayControl.forceBlank)
+    )).asUInt
+  }
+
   // Background renderer
   val bgRender = Module(new BackgroundRenderer)
   bgRender.io.enable := io.enable
-  bgRender.io.displayControl := regDisplayControl
+  bgRender.io.displayControl := displayControlEffective
   bgRender.io.bgControl := regBgControl
   bgRender.io.bgOffX := regBgOffX
   bgRender.io.bgOffY := regBgOffY
@@ -216,7 +240,7 @@ class Ppu extends Module {
   // Compositor
   val compositor = Module(new Compositor)
   compositor.io.enable := io.enable
-  compositor.io.displayControl := regDisplayControl
+  compositor.io.displayControl := displayControlEffective
   compositor.io.bgControl := regBgControl
   compositor.io.win0Bounds := regWin0Bounds
   compositor.io.win1Bounds := regWin1Bounds

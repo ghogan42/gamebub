@@ -187,8 +187,8 @@ class CartridgeController extends Module {
         currentRequestPort := romRequests.asUInt
 
         // Initial burst wait: 0 [extra] cycles if total waits is 2,
-        // otherwise 1. Physical cartridges: always a single address cycle (see RomStage0).
-        waitCounter := Mux(initialRomWait === 2.U || !io.cartridge.isEmulated, 0.U, 1.U)
+        // otherwise 1.
+        waitCounter := Mux(initialRomWait === 2.U, 0.U, 1.U)
       }
     } .elsewhen (ramTarget.request && reg_nCS2 === 1.U) {
       logger.debug(cf"Start Ram request addr=${ramTarget.address(15, 0)}%x wr=${ramTarget.write}")
@@ -229,7 +229,7 @@ class CartridgeController extends Module {
       io.cartridge.AHiDir := true.B
 
       val wait = Mux1H(currentRequestPort, waitRomFirst)
-      when (currentIsWrite && waitCounter === 0.U && wait =/= 2.U && io.cartridge.isEmulated) {
+      when (currentIsWrite && waitCounter === 0.U && wait =/= 2.U) {
         // If this is the second cycle of a two cycle initial wait, set WDATA output.
         io.cartridge.ADLoDir := true.B
         io.cartridge.ADLoOut := romRequestDataWrite
@@ -239,12 +239,7 @@ class CartridgeController extends Module {
         waitCounter := waitCounter - 1.U
         when (waitCounter === 0.U) {
           state := State.RomStage1
-          // Physical cartridges: nRD/nWR go low right after the single address cycle (the cart has
-          // latched A0-15 on nCS falling) and stay low for the rest of the access, like on a GBA.
-          // Previously nRD was only low for the last 1-2 cycles of an N access (1 cycle at the
-          // common 3-wait setting), too short for slower cartridge chips (and the level shifter
-          // turnaround). The total access time is unchanged.
-          waitCounter := Mux(io.cartridge.isEmulated, VecInit(1.U, 0.U, 0.U, 5.U)(wait), VecInit(2.U, 1.U, 0.U, 6.U)(wait))
+          waitCounter := VecInit(1.U, 0.U, 0.U, 5.U)(wait)
           when (currentIsWrite) {
             reg_nWR := 0.U
           } .otherwise {

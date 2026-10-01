@@ -27,7 +27,12 @@ object CartridgePrefetch {
       val writeData = Input(UInt(16.W))
 
       val readEnable = Input(Bool())
+      /// With readEnable: consume two entries (readData, then readData2).
+      val readTwo = Input(Bool())
       val readData = Output(UInt(16.W))
+      val readData2 = Output(UInt(16.W))
+      /// Number of entries in the buffer.
+      val count = Output(UInt(3.W))
 
       val flush = Input(Bool())
 
@@ -47,13 +52,15 @@ object CartridgePrefetch {
     io.almostEmpty := (regReadIndex + 1.U) === regWriteIndex
     io.full := (regWriteIndex + 1.U) === regReadIndex
     io.readData := buffer(regReadIndex)
+    io.readData2 := buffer(regReadIndex + 1.U)
+    io.count := regWriteIndex - regReadIndex
 
     when (io.writeEnable) {
       buffer(regWriteIndex) := io.writeData
       regWriteIndex := regWriteIndex + 1.U
     }
     when (io.readEnable) {
-      regReadIndex := regReadIndex + 1.U
+      regReadIndex := regReadIndex + Mux(io.readTwo, 2.U, 1.U)
     }
     when (io.flush) {
       // It's valid to flush *and* put a new entry in.
@@ -81,9 +88,9 @@ class CartridgePrefetch extends Module {
     val enable = Input(Bool())
     val prefetchEnabled = Input(Bool())
 
-    val busTargetRom0 = new TargetInterface(16.W)
-    val busTargetRom1 = new TargetInterface(16.W)
-    val busTargetRom2 = new TargetInterface(16.W)
+    val busTargetRom0 = new TargetInterface(16.W, wide = true)
+    val busTargetRom1 = new TargetInterface(16.W, wide = true)
+    val busTargetRom2 = new TargetInterface(16.W, wide = true)
     val busTargetRamRequest = Input(Bool())
     val busTargetRamNextRequest = Input(Bool())
 
@@ -107,6 +114,7 @@ class CartridgePrefetch extends Module {
   val romRequestNextSeq = romTargets(0).nextSeq // nextSeq is the same for all targets
   val romRequestDataWrite = Mux1H(romRequests, romTargets.map(_.dataWrite))
   val romRequestIsData = Mux1H(romRequests, romTargets.map(_.isData))
+  val romRequestWide = Mux1H(romRequests, romTargets.map(_.wideRequest.get))
   // Parameters set below during a request.
   romInitiator.request := false.B
   romInitiator.address := DontCare
@@ -123,9 +131,13 @@ class CartridgePrefetch extends Module {
   // Passing data back towards the bus.
   val romTargetDone = WireDefault(false.B)
   val romTargetDataRead = Wire(UInt(16.W))
+  val romTargetWideDone = WireDefault(false.B)
+  val romTargetWideDataRead = WireDefault(0.U(32.W))
   for (x <- romTargets) {
     x.done := romTargetDone
     x.dataRead := romTargetDataRead
+    x.wideDone.get := romTargetWideDone
+    x.wideDataRead.get := romTargetWideDataRead
   }
   romTargetDataRead := DontCare
 
@@ -143,30 +155,39 @@ class CartridgePrefetch extends Module {
   val buffer = Module(new CartridgePrefetch.Buffer)
   buffer.io.flush := false.B
   buffer.io.readEnable := false.B
+  buffer.io.readTwo := false.B
   buffer.io.writeEnable := false.B
   buffer.io.writeData := DontCare
   // The first address in the prefetch buffer
   val regBufferAddress = Reg(UInt(24.W))
   // Whether there's a pending request for the prefetch buffer.
   val regBufferRequest = RegInit(false.B)
+  // Whether the pending buffer request is for a whole word (two halfwords at once).
+  val regBufferRequestWide = RegInit(false.B)
   val bufferCanSatisfyRequest = Wire(Bool())
+  val bufferCanSatisfyWide = Wire(Bool())
   // Whether there's a pending request for the halfword we're currently fetching.
   val regPrefetchRequest = RegInit(false.B)
+  // Whether there's a pending word request: low half in the buffer, high half being fetched.
+  val regWideWait = RegInit(false.B)
 
-  bufferCanSatisfyRequest := !buffer.io.empty && regBufferAddress === romRequestAddress && !romRequestIsData
+  // Entries left for a new request once the pending buffer request (served this cycle) is consumed.
+  // TODO: doesn't count an entry being written this cycle (combinatorial cycle)
+  val bufferAvailable = buffer.io.count - Mux(regBufferRequest, Mux(regBufferRequestWide, 2.U, 1.U), 0.U)
+  val bufferAddressMatches = regBufferAddress === romRequestAddress && !romRequestIsData
+  bufferCanSatisfyRequest := bufferAddressMatches && bufferAvailable >= 1.U
+  // A word opcode fetch with both halfwords buffered completes in a single cycle.
+  bufferCanSatisfyWide := bufferAddressMatches && bufferAvailable >= 2.U && romRequestWide
   when (regBufferRequest) {
-    logger.info(cf"serving from buffer: data=${buffer.io.readData}%x | rd=${buffer.io.debugReadIndex} wr=${buffer.io.debugWriteIndex} ")
+    logger.info(cf"serving from buffer: data=${buffer.io.readData}%x wide=${regBufferRequestWide} | rd=${buffer.io.debugReadIndex} wr=${buffer.io.debugWriteIndex} ")
     romTargetDone := true.B
     romTargetDataRead := buffer.io.readData
+    romTargetWideDone := regBufferRequestWide
+    romTargetWideDataRead := Cat(buffer.io.readData2, buffer.io.readData)
     when (io.enable) {
       buffer.io.readEnable := true.B
+      buffer.io.readTwo := regBufferRequestWide
       regBufferRequest := false.B
-    }
-
-    when (buffer.io.almostEmpty) {
-      // The buffer will be empty next cycle.
-      // TODO: should this not apply if writeEnable = true? combinatorial cycle though
-      bufferCanSatisfyRequest := false.B
     }
   }
 
@@ -179,7 +200,8 @@ class CartridgePrefetch extends Module {
           logger.debug(cf"idle: got buffer request: addr=${romRequestAddress << 1}%x")
           when (io.enable) {
             regBufferRequest := true.B
-            regBufferAddress := regBufferAddress + 1.U
+            regBufferRequestWide := bufferCanSatisfyWide
+            regBufferAddress := regBufferAddress + Mux(bufferCanSatisfyWide, 2.U, 1.U)
           }
         } .otherwise {
           // Start the request.
@@ -280,7 +302,24 @@ class CartridgePrefetch extends Module {
       romInitiator.dataWrite := DontCare
       val canCompletePrefetch = WireDefault(false.B)
 
-      when (regPrefetchRequest) {
+      when (regWideWait) {
+        // Forward the buffered low half together with the high half as soon as it arrives.
+        when (romInitiator.done) {
+          logger.debug(cf"Forwarding buffered+prefetched word, data=${romInitiator.dataRead}%x${buffer.io.readData}%x")
+          romTargetDone := true.B
+          romTargetDataRead := buffer.io.readData
+          romTargetWideDone := true.B
+          romTargetWideDataRead := Cat(romInitiator.dataRead, buffer.io.readData)
+          // Continue the prefetch.
+          romInitiator.address := regRequestAddress + 1.U
+          when (io.enable) {
+            regWideWait := false.B
+            buffer.io.readEnable := true.B
+            regBufferAddress := regRequestAddress + 1.U
+            regRequestAddress := regRequestAddress + 1.U
+          }
+        }
+      } .elsewhen (regPrefetchRequest) {
         when ((hasNextRomRequest && !romRequestNextSeq) || io.busTargetRamNextRequest) {
           // Bus is waiting for the current rom request, and then making a different cartridge request.
           // Don't continue the prefetch after this.
@@ -331,12 +370,30 @@ class CartridgePrefetch extends Module {
           }
         }
       } .elsewhen (hasRomRequest) {
-        when (bufferCanSatisfyRequest) {
+        when (romRequestWide && bufferAddressMatches && bufferAvailable === 1.U &&
+            regRequestAddress === romRequestAddress + 1.U) {
+          // Word request: low half is buffered, high half is being fetched now. Complete both together.
+          logger.debug(cf"active: wide request, waiting for high half addr=${regRequestAddress << 1}%x")
+          when (romInitiator.done) {
+            // High half arrives this cycle: buffer it, and serve the whole word from the buffer next cycle.
+            canCompletePrefetch := true.B
+            when (io.enable) {
+              regBufferRequest := true.B
+              regBufferRequestWide := true.B
+              regBufferAddress := regBufferAddress + 2.U
+            }
+          } .otherwise {
+            when (io.enable) {
+              regWideWait := true.B
+            }
+          }
+        } .elsewhen (bufferCanSatisfyRequest) {
           // This request can come from the prefetch buffer!
           logger.debug(cf"active: got buffer request: addr=${romRequestAddress << 1}%x | x=${regBufferRequest}")
           when (io.enable) {
             regBufferRequest := true.B
-            regBufferAddress := regBufferAddress + 1.U
+            regBufferRequestWide := bufferCanSatisfyWide
+            regBufferAddress := regBufferAddress + Mux(bufferCanSatisfyWide, 2.U, 1.U)
           }
           when (romInitiator.done) {
             canCompletePrefetch := true.B
@@ -350,6 +407,7 @@ class CartridgePrefetch extends Module {
               // We're done this cycle, which means we won't be able to directly forward it next cycle.
               // So put it into the buffer, and mark it as being served next cycle.
               regBufferRequest := true.B
+              regBufferRequestWide := false.B
               buffer.io.writeEnable := true.B
               buffer.io.writeData := romInitiator.dataRead
               // And flush the buffer, because otherwise this would be the *last* entry.
@@ -364,11 +422,23 @@ class CartridgePrefetch extends Module {
           }
         } .otherwise {
           // Request for something else, abort current prefetch.
-          logger.debug("Abort prefetch (ROM request)")
+          logger.debug(cf"Abort prefetch (ROM request) addr=${romRequestAddress << 1}%x fetching=${regRequestAddress << 1}%x isData=${romRequestIsData}")
           abortRequest := true.B
+          // Hand the new request to the controller right away (an emulated cart starts it this
+          // cycle; a physical cart starts it next cycle, once nCS has gone high).
+          romInitiator.request := true.B
+          romInitiator.address := romRequestAddress
+          romInitiator.write := romRequestWrite
+          romInitiator.sequential := romRequestSequential
+          romInitiator.nextSeq := romRequestNextSeq
+          romInitiator.dataWrite := romRequestDataWrite
+          io.cartInitiatorRomRegion := VecInit(romRequests)
           when (io.enable) {
             buffer.io.flush := true.B
-            regState := State.Idle
+            regState := State.Passthrough
+            regRequestAddress := romRequestAddress
+            regRequestRegion := VecInit(romRequests)
+            regRequestEligible := !romRequestIsData && io.prefetchEnabled
           }
         }
       } .elsewhen (hasRamRequest) {

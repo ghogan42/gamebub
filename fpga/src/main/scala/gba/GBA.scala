@@ -57,9 +57,9 @@ class GBA extends Module {
     BusTarget("Palette Ram", 0x5.U(4.W), BusAccessWidth.Halfword),
     BusTarget("Video Ram", 0x6.U(4.W), BusAccessWidth.Halfword),
     BusTarget("OAM", 0x7.U(4.W), BusAccessWidth.Word),
-    BusTarget("Cart ROM 0", (0x8 >> 1).U(3.W), BusAccessWidth.Halfword),
-    BusTarget("Cart ROM 1", (0xA >> 1).U(3.W), BusAccessWidth.Halfword),
-    BusTarget("Cart ROM 2", (0xC >> 1).U(3.W), BusAccessWidth.Halfword),
+    BusTarget("Cart ROM 0", (0x8 >> 1).U(3.W), BusAccessWidth.Halfword, wide = true),
+    BusTarget("Cart ROM 1", (0xA >> 1).U(3.W), BusAccessWidth.Halfword, wide = true),
+    BusTarget("Cart ROM 2", (0xC >> 1).U(3.W), BusAccessWidth.Halfword, wide = true),
     BusTarget("Cart RAM", (0xE >> 1).U(3.W), BusAccessWidth.Byte),
   )))
   bus.io.enable := io.enable
@@ -108,8 +108,6 @@ class GBA extends Module {
   mmio.targets(0) <> interrupt.io.mmio
   cpu.io.IRQ := interrupt.io.irq
   interrupt.io.peripheralIrq := 0.U.asTypeOf(new Interrupt.Flags)
-  // Implement halting by blocking CPU transactions on the bus.
-  busArbiter.io.blockInitiators := Cat(interrupt.io.cpuHalt, 0.U(4.W))
   interrupt.io.biosUnlocked := bios.io.unlocked
   // TODO implement cartridge interrupt / DMA request
 
@@ -144,6 +142,8 @@ class GBA extends Module {
   for (i <- 0 until 4) {
     busArbiter.io.inputPorts(i) <> dma.io.busInitiator(i)
   }
+  // Implement halting (and DMA startup cycles) by blocking CPU transactions on the bus.
+  busArbiter.io.blockInitiators := Cat(interrupt.io.cpuHalt || dma.io.blockCpu, 0.U(4.W))
 
   // Timer
   val timer = Module(new Timer)

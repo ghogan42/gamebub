@@ -155,8 +155,17 @@ class CartridgeController extends Module {
   // We can do back-to-back ROM requests (and RAM requests), as long as nCS has been raised high.
   val endRomBurst = WireDefault(false.B)
   val endRamBurst = WireDefault(false.B)
-  when (state === State.Idle || endRomBurst || endRamBurst) {
-    when (hasRomRequest && reg_nCS === 1.U) {
+  // A non-sequential ROM request normally needs nCS to have gone high first (a physical cart latches
+  // the address on its falling edge), costing a cycle when it ends a burst that kept nCS low (e.g. a
+  // prefetch burst). An emulated cartridge takes the address from reqStart instead, so it can start
+  // immediately, like on hardware. Except for addresses that may hit an emulated peripheral (EEPROM
+  // in region 2, GPIO in the first 256 bytes), which do rely on the nCS edge.
+  val romPeripheralPossible = romRequests(2) || romRequestAddress(23, 7) === 0.U
+  val immediateRomStart = hasRomRequest && reg_nCS === 0.U && (io.abortRequest || endRomBurst) &&
+    io.cartridge.isEmulated && !romPeripheralPossible
+  val initialRomWait = Mux1H(romRequests, waitRomFirst)
+  when (state === State.Idle || endRomBurst || endRamBurst || immediateRomStart) {
+    when (hasRomRequest && (reg_nCS === 1.U || immediateRomStart)) {
       logger.debug(cf"Start Rom(${romRequests.asUInt}%b) request addr=${romRequestAddress << 1}%x wr=$romRequestWrite")
       io.cartridge.ADLoOut := romRequestAddress(15, 0)
       io.cartridge.ADLoDir := true.B
@@ -177,12 +186,7 @@ class CartridgeController extends Module {
 
         // Initial burst wait: 0 [extra] cycles if total waits is 2,
         // otherwise 1.
-        val wait = Mux1H(romRequests, waitRomFirst)
-        when (wait === 2.U) {
-          waitCounter := 0.U
-        } .otherwise {
-          waitCounter := 1.U
-        }
+        waitCounter := Mux(initialRomWait === 2.U, 0.U, 1.U)
       }
     } .elsewhen (ramTarget.request && reg_nCS2 === 1.U) {
       logger.debug(cf"Start Ram request addr=${ramTarget.address(15, 0)}%x wr=${ramTarget.write}")
@@ -409,5 +413,20 @@ class CartridgeController extends Module {
     reg_nCS2 := 1.U
     reg_nRD := 1.U
     reg_nWR := 1.U
+  }
+  when (immediateRomStart) {
+    // Same as starting a request from idle (above), overriding the ended/aborted burst's updates.
+    io.cartridge.reqStart := true.B
+    io.cartridge.reqRom := true.B
+    io.cartridge.reqAddress := romRequestAddress
+    io.cartridge.reqWrite := romRequestWrite
+    when (io.enable) {
+      state := State.RomStage0
+      reg_nCS := 0.U
+      currentAddress := romRequestAddress
+      currentIsWrite := romRequestWrite
+      currentRequestPort := romRequests.asUInt
+      waitCounter := Mux(initialRomWait === 2.U, 0.U, 1.U)
+    }
   }
 }

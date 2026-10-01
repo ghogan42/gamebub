@@ -245,6 +245,7 @@ class Link extends Module {
   private def handleNormal(): Unit = {
     val regBusy = RegInit(false.B)
     val regMasterHold = Reg(Bool())
+    val regHoldCounter = Reg(UInt(3.W))
     val regBitCounter = Reg(UInt(6.W))
     val regClockCounter = Reg(UInt(5.W))
     val regClockOut = Reg(Bool())
@@ -305,6 +306,7 @@ class Link extends Module {
         // Tick every clock *edge* (rising or falling)
         val tick = Mux(fastClock, nextClockCounter(2) =/= regClockCounter(2), nextClockCounter(5))
         when (tick) {
+          regClockCounter := 0.U
           logger.debug("Normal master clock tick")
           regClockOut := !regClockOut
           when (regClockOut) {
@@ -340,8 +342,10 @@ class Link extends Module {
         when (nextBitCounter === 0.U) {
           logger.info("Normal transfer done")
           when (isMaster) {
-            // Master needs to hold data for another half cycle or so for slave to read.
+            // Master holds the data for a few more cycles (for the slave to read) before the
+            // transfer completes (hardware: ~5 cycles after the last rising edge, at any clock rate).
             regMasterHold := true.B
+            regHoldCounter := 0.U
           } .otherwise {
             regBusy := false.B
             io.irq := interruptEnable
@@ -357,7 +361,10 @@ class Link extends Module {
 
       when (regMasterHold) {
         regClockOut := true.B
-        when (clockFalling) {
+        clockFalling := false.B
+        clockRising := false.B
+        regHoldCounter := regHoldCounter + 1.U
+        when (regHoldCounter === (Link.NormalMasterHoldCycles - 1).U) {
           logger.info("Master hold complete")
           regBusy := false.B
           io.irq := interruptEnable
@@ -854,6 +861,9 @@ class Link extends Module {
 }
 
 object Link {
+  /// Cycles from the last rising clock edge until a Normal mode master transfer completes.
+  val NormalMasterHoldCycles = 5
+
   class Ports extends Bundle {
     val so = Bool()
     val si = Bool()

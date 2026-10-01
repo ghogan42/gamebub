@@ -131,7 +131,8 @@ class SimGba extends Module {
 
 
   // Link
-  gba.io.link.in.si := false.B
+  // No cable: link port inputs are pulled high.
+  gba.io.link.in.si := true.B
   gba.io.link.in.so := true.B
   gba.io.link.in.sc := true.B
   gba.io.link.in.sd := true.B

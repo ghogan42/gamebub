@@ -4,10 +4,12 @@
 @ Contains "FLASH1M_V103" so flash carts emulate a 128 KiB Flash save.
 @
 @ Screen (mode 3), one line per test, hex values:
-@   line 0: Flash ID, commands from ROM code (like Pokemon), WAITCNT=4014 (expect C209 / 6213 / ...)
-@   line 1: Flash ID, commands from IWRAM code,              WAITCNT=4014
-@   line 2: Flash ID, commands from ROM code,                WAITCNT=0000
-@   line 3: Flash ID, commands from IWRAM code,              WAITCNT=0000
+@ ID lines show 3 bytes: device (1st read of 0E000001), maker (0E000000), device (2nd read).
+@   line 0: Flash ID, commands from ROM code (exactly like Pokemon), WAITCNT=4017 (SRAM 8 waits)
+@   line 1: Flash ID, commands from IWRAM code,                      WAITCNT=4017
+@   line 2: Flash ID, commands from ROM code,                        WAITCNT=4014 (SRAM 4 waits)
+@   line 3: Flash ID, commands from ROM code,                        WAITCNT=0003 (no prefetch)
+@ (e.g. Macronix: 09 C2 09, Sanyo: 13 62 13, EZ-Flash Omega on a GBA: 1B 32 1B)
 @   line 4: ROM checksum 0x08010000-0x0801FFFF, WAITCNT=0000 (reference)
 @   line 5: ROM checksum, WAITCNT=4014 (prefetch, 3/1 waits)
 @   line 6: ROM checksum, WAITCNT=4317
@@ -50,8 +52,8 @@ _start:
     subs r2, r2, #1
     bne 2b
 
-    @ ---- line 0: ID from ROM code, WAITCNT 4014
-    ldr r0, =0x4014
+    @ ---- line 0: ID from ROM code, WAITCNT 4017
+    ldr r0, =0x4017
     mov lr, pc
     b .Lset_waitcnt
     mov lr, pc
@@ -59,8 +61,8 @@ _start:
     mov r1, #0
     mov lr, pc
     b .Lshow_id
-    @ ---- line 1: ID from IWRAM code, WAITCNT 4014
-    ldr r0, =0x4014
+    @ ---- line 1: ID from IWRAM code, WAITCNT 4017
+    ldr r0, =0x4017
     mov lr, pc
     b .Lset_waitcnt
     ldr r3, =0x03000000 + (.Lflash_id_iwram - .Liwram_code_start)
@@ -69,8 +71,8 @@ _start:
     mov r1, #1
     mov lr, pc
     b .Lshow_id
-    @ ---- line 2: ID from ROM code, WAITCNT 0
-    mov r0, #0
+    @ ---- line 2: ID from ROM code, WAITCNT 4014
+    ldr r0, =0x4014
     mov lr, pc
     b .Lset_waitcnt
     mov lr, pc
@@ -78,13 +80,12 @@ _start:
     mov r1, #2
     mov lr, pc
     b .Lshow_id
-    @ ---- line 3: ID from IWRAM code, WAITCNT 0
-    mov r0, #0
+    @ ---- line 3: ID from ROM code, WAITCNT 0003
+    mov r0, #3
     mov lr, pc
     b .Lset_waitcnt
-    ldr r3, =0x03000000 + (.Lflash_id_iwram - .Liwram_code_start)
     mov lr, pc
-    bx r3
+    b .Lflash_id_rom
     mov r1, #3
     mov lr, pc
     b .Lshow_id
@@ -183,7 +184,8 @@ _start:
     push {r4, r5, lr}
     mov r4, r0
     mov r5, r1
-    and r2, r0, #0xFF
+    lsr r2, r0, #8
+    and r2, r2, #0xFF
     mov r3, #0
     cmp r2, #0xC2
     moveq r3, #1
@@ -195,17 +197,18 @@ _start:
     moveq r3, #1
     cmp r2, #0x1F
     moveq r3, #1
+    lsr r2, r0, #16            @ device bytes must agree
+    and r12, r0, #0xFF
+    cmp r2, r12
+    movne r3, #0
     mov r0, r1
     mov r1, r3
     mov lr, pc
     b .Ldraw_bar
-    @ print 4 hex digits: byte0 (maker) then byte1 (device)
-    and r2, r4, #0xFF
-    lsr r3, r4, #8
-    orr r0, r3, r2, lsl #8  @ r0 = byte0:byte1
-    lsl r0, r0, #16
+    @ print 6 hex digits: device (1st), maker, device (2nd)
+    lsl r0, r4, #8
     mov r1, r5
-    mov r2, #4
+    mov r2, #6
     pop {r4, r5, lr}
     b .Ldraw_hex
 
@@ -323,7 +326,9 @@ _start:
     ldr r2, .Liw_flash0
     ldrb r0, [r2, #1]
     ldrb r3, [r2]
+    ldrb r1, [r2, #1]
     orr r0, r3, r0, lsl #8
+    orr r0, r1, r0, lsl #8
     bx lr
 @ Whole ID sequence from IWRAM (no ROM fetches in between)
 .Lflash_id_iwram:
@@ -342,6 +347,8 @@ _start:
     ldr r2, .Liw_flash0
     ldrb r1, [r2, #1]
     ldrb r3, [r2]
+    orr r1, r3, r1, lsl #8
+    ldrb r3, [r2, #1]
     orr r1, r3, r1, lsl #8
     strb r6, [r4]
     strb r7, [r5]

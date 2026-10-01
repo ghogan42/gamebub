@@ -209,7 +209,11 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
       val we = !cart.nWR
       val oe = !cart.nRD
       val prevActive = RegNext(ce && we, false.B)
-      val prevAdDriven = RegNext(cart.ADLoDir, false.B)
+      // Whether AD0-15 was driven with the same value for the *whole* previous cycle: the controller
+      // can change it mid-cycle (clock.asBool), so also sample during the first (clock high) half.
+      val adFirstHalfDriven = withClock((!clock.asBool).asClock) { RegNext(cart.ADLoDir, false.B) }
+      val adFirstHalf = withClock((!clock.asBool).asClock) { RegNext(cart.ADLoOut) }
+      val prevAdDriven = RegNext(cart.ADLoDir && adFirstHalfDriven && adFirstHalf === cart.ADLoOut, false.B)
       val prevAd = RegNext(Mux(cart.ADLoDir, cart.ADLoOut, cart.ADLoIn))
       val regAddress = Reg(UInt(16.W))
       val regData = Reg(UInt(8.W))
@@ -246,9 +250,23 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
           when (d === 0xB0.U) { regBankNext := true.B }
         }
       }
-      when (ce && oe) {
-        val a = cart.ADLoOut
-        cart.AHiIn := Mux(regIdMode, Mux(a === 0.U, 0xC2.U, Mux(a === 1.U, 0x09.U, 0xFF.U)), 0xFF.U)
+      // Reads: like an FPGA-emulated Flash (e.g. EZ-Flash Omega), the address is latched when the read
+      // starts (later of /CE and /OE falling) and must already be stable in the previous cycle.
+      val readActive = ce && oe
+      val prevReadActive = RegNext(readActive, false.B)
+      val regReadAddress = Reg(UInt(16.W))
+      val readAddress = WireDefault(regReadAddress)
+      when (readActive && !prevReadActive) {
+        val stable = prevAdDriven && cart.ADLoDir && prevAd === cart.ADLoOut
+        readAddress := Mux(stable, cart.ADLoOut, prevAd)
+        when (!stable) {
+          flashLogger.error(cf"FLASH: read address not set up before /CE,/OE fell (prev=${prevAd}%x driven=${prevAdDriven} now=${cart.ADLoOut}%x)")
+        }
+      }
+      regReadAddress := readAddress
+      when (readActive) {
+        val a = readAddress
+        cart.AHiIn := Mux(regIdMode, Mux(a === 0.U, 0xC2.U, Mux(a === 1.U, 0x09.U, 0x00.U)), 0xFF.U)
       }
     }
   }

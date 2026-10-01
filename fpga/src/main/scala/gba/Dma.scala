@@ -219,13 +219,16 @@ class Dma extends Module {
             regStage := 1.U
             regCount := regCount - 1.U
 
-            switch (control.sourceControl) {
-              is (DmaAddressControl.increment) {
-                regSource := regSource + Mux(isSizeWord, 4.U, 2.U)
-              }
-              is (DmaAddressControl.decrement) {
-                regSource := regSource - Mux(isSizeWord, 4.U, 2.U)
-              }
+            // Game Pak ROM sources (0x08000000-0x0DFFFFFF) always increment, regardless of control.
+            val sourceInRom = if (regSource.getWidth >= 28) {
+              regSource(27) && regSource(26, 25) =/= 3.U
+            } else {
+              false.B
+            }
+            when (sourceInRom || control.sourceControl === DmaAddressControl.increment) {
+              regSource := regSource + Mux(isSizeWord, 4.U, 2.U)
+            } .elsewhen (control.sourceControl === DmaAddressControl.decrement) {
+              regSource := regSource - Mux(isSizeWord, 4.U, 2.U)
             }
           }
         }

@@ -21,9 +21,11 @@ object SimGba extends App {
   val physicalCart = sys.env.get("SIM_PHYSICAL_CART").contains("1")
   // SIM_SLOW_CART=1 (with SIM_PHYSICAL_CART): model a slower cartridge chip/bus turnaround.
   val slowCart = sys.env.get("SIM_SLOW_CART").contains("1")
+  // SIM_PHYSICAL_FLASH=1 (with SIM_PHYSICAL_CART): cart Flash save is a physical MX29L010 model.
+  val physicalFlash = sys.env.get("SIM_PHYSICAL_FLASH").contains("1")
 
   ChiselStage.emitSystemVerilogFile(
-    new SimGba(physicalCart, slowCart),
+    new SimGba(physicalCart, slowCart, physicalFlash),
     args,
     firtoolOpts = Array(
       "--preserve-aggregate=1d-vec",
@@ -41,7 +43,11 @@ object SimGba extends App {
 ///   the emulated cartridge.
 ///   slowCart: (physical mode) ROM data is only valid once nRD has been low for 2 cycles, or 1 cycle
 ///   if the data bus was already an input (no bus turnaround) -- garbage otherwise.
-class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false) extends Module {
+///   physicalFlash: (physical mode) the cart's Flash save is modelled from the physical bus signals
+///   like a Macronix MX29L010 (command state machine, ID C2/09, empty contents). Conservative timing:
+///   the address is latched when /WE (or /CE) falls only if it was already driven and stable in the
+///   previous cycle; data is latched from the last cycle /WE is low.
+class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalFlash: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val ppu = Output(new PpuOutput)
@@ -185,6 +191,55 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false) extends M
     }
     when (!cart.nCS && !cart.nRD && !gpioAddress) {
       cart.ADLoIn := romBusData
+    }
+
+    if (physicalFlash) {
+      val flashLogger = Logger("sim.flash", enable = io.enable)
+      val ce = !cart.nCS2
+      val we = !cart.nWR
+      val oe = !cart.nRD
+      val prevActive = RegNext(ce && we, false.B)
+      val prevAdDriven = RegNext(cart.ADLoDir, false.B)
+      val prevAd = RegNext(Mux(cart.ADLoDir, cart.ADLoOut, cart.ADLoIn))
+      val regAddress = Reg(UInt(16.W))
+      val regData = Reg(UInt(8.W))
+      val regIdMode = RegInit(false.B)
+      val regStep = RegInit(0.U(2.W))     // AA / 55 unlock progress
+      val regBankNext = RegInit(false.B)  // next write selects the bank
+      // Address latched on the later of /CE and /WE falling.
+      when (ce && we && !prevActive) {
+        val stable = prevAdDriven && cart.ADLoDir && prevAd === cart.ADLoOut
+        regAddress := Mux(stable, cart.ADLoOut, prevAd)
+        when (!stable) {
+          flashLogger.error(cf"FLASH: address not set up before /WE fell (prev=${prevAd}%x driven=${prevAdDriven} now=${cart.ADLoOut}%x)")
+        }
+      }
+      when (ce && we) {
+        regData := Mux(cart.AHiDir, cart.AHiOut, 0xFF.U)
+      }
+      // Command processed when the write ends (earlier of /CE and /WE rising).
+      when (prevActive && !(ce && we)) {
+        val a = regAddress
+        val d = regData
+        flashLogger.debug(cf"FLASH write addr=${a}%x data=${d}%x step=${regStep} id=${regIdMode}")
+        regStep := 0.U
+        when (regBankNext) {
+          regBankNext := false.B
+        } .elsewhen (d === 0xF0.U) {
+          regIdMode := false.B
+        } .elsewhen (regStep === 0.U && a === 0x5555.U && d === 0xAA.U) {
+          regStep := 1.U
+        } .elsewhen (regStep === 1.U && a === 0x2AAA.U && d === 0x55.U) {
+          regStep := 2.U
+        } .elsewhen (regStep === 2.U && a === 0x5555.U) {
+          when (d === 0x90.U) { regIdMode := true.B }
+          when (d === 0xB0.U) { regBankNext := true.B }
+        }
+      }
+      when (ce && oe) {
+        val a = cart.ADLoOut
+        cart.AHiIn := Mux(regIdMode, Mux(a === 0.U, 0xC2.U, Mux(a === 1.U, 0x09.U, 0xFF.U)), 0xFF.U)
+      }
     }
   }
 

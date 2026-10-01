@@ -173,6 +173,16 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
       cf"CS=${cart.nCS} CS2=${cart.nCS2} RD=${cart.nRD} WR=${cart.nWR} " +
       cf"AD=${Mux(cart.ADLoDir, cart.ADLoOut, cart.ADLoIn)}%x out=${cart.ADLoDir} " +
       cf"AH=${Mux(cart.AHiDir, cart.AHiOut, cart.AHiIn)}%x out=${cart.AHiDir}")
+    // ROM-area writes (GPIO/RTC, flash cart registers): data must be on the bus before nWR falls.
+    locally {
+      val prevWr = RegNext(cart.nWR, true.B)
+      val prevAdDriven = RegNext(cart.ADLoDir, false.B)
+      val prevAd = RegNext(cart.ADLoOut)
+      when (io.enable && !cart.nCS && !cart.nWR && prevWr &&
+          !(prevAdDriven && cart.ADLoDir && prevAd === cart.ADLoOut)) {
+        printf(cf"CARTBUS: ROM write data not set up before /WR fell (prev=${prevAd}%x driven=${prevAdDriven} now=${cart.ADLoOut}%x)\n")
+      }
+    }
     val gpioAddress = regLatchedAddress >= (0xC2 / 2).U && regLatchedAddress <= (0xC8 / 2).U
     cart.isEmulated := false.B
     // Beyond the end of the ROM, the bus floats to the latched (halfword) address.

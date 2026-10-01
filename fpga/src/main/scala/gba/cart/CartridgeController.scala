@@ -91,6 +91,8 @@ class CartridgeController extends Module {
 
   val state = RegInit(State.Idle)
   val regReadData = Reg(UInt(16.W))
+  /// Write data of the current cartridge RAM access (held on the bus after nWR rises).
+  val regRamWriteData = Reg(UInt(8.W))
   val isRequestDone = WireDefault(false.B)
   val regWaitControl = RegInit(0.U.asTypeOf(new WaitstateControl))
   val waitRomFirst = Seq(regWaitControl.ws0First, regWaitControl.ws1First, regWaitControl.ws2First)
@@ -191,8 +193,13 @@ class CartridgeController extends Module {
     } .elsewhen (ramTarget.request && reg_nCS2 === 1.U) {
       logger.debug(cf"Start Ram request addr=${ramTarget.address(15, 0)}%x wr=${ramTarget.write}")
 
-      // TODO: should we put ADDR on the bus early?
+      // Put the address on the bus now, while nCS2 is still high: a physical Flash chip latches the
+      // address when nCS2/nWR fall at the start of RamStage0, so it must already be stable then.
       // Note: we don't signal emuCart write until we have the write data, in RamStage0
+      when (!io.cartridge.isEmulated) {
+        io.cartridge.ADLoOut := ramTarget.address(15, 0)
+        io.cartridge.ADLoDir := true.B
+      }
 
       when (io.enable) {
         state := State.RamStage0
@@ -363,6 +370,7 @@ class CartridgeController extends Module {
       }
 
       io.cartridge.reqEnd := waitCounter === 0.U
+      regRamWriteData := ramTarget.dataWrite
       when (io.enable) {
         waitCounter := waitCounter - 1.U
         when (waitCounter === 0.U) {
@@ -377,6 +385,17 @@ class CartridgeController extends Module {
       }
     }
     is (State.RamStage2) {
+      // Hold time: nWR/nRD (and nCS2) just went high, and a physical Flash chip latches write data on
+      // that rising edge. Keep the address and write data on the bus for ~1/2 cycle (as for ROM
+      // writes in RomStage2); a following request (if any) takes over the bus in the second half.
+      when (!io.cartridge.isEmulated && clock.asBool) {
+        io.cartridge.ADLoOut := currentAddress(15, 0)
+        io.cartridge.ADLoDir := true.B
+        when (currentIsWrite) {
+          io.cartridge.AHiOut := regRamWriteData
+          io.cartridge.AHiDir := true.B
+        }
+      }
       ramTarget.done := true.B
       // nRD/NRW went back high
       when (ramTarget.request && ramTarget.sequential) {

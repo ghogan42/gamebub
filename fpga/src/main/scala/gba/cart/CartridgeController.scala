@@ -210,8 +210,9 @@ class CartridgeController extends Module {
         state := State.RamStage0
         reg_nCS2 := 0.U
         // XXX: nRD/nWR are supposed to go low on the *falling* edge of the next cycle
+        // Physical cartridges: nWR only goes low after RamStage0 (see there).
         when (ramTarget.write) {
-          reg_nWR := 0.U
+          reg_nWR := !io.cartridge.isEmulated
         } .otherwise {
           reg_nRD := 0.U
         }
@@ -364,6 +365,12 @@ class CartridgeController extends Module {
       when (io.enable) {
         state := State.RamStage1
         waitCounter := VecInit(2.U, 1.U, 0.U, 6.U)(regWaitControl.sram)
+        // Physical cartridges: a Flash chip latches the address when /WE falls, so drive A0-15 and the
+        // data for this whole cycle first (the AD bus may have been turning around from a ROM read),
+        // then pull nWR low.
+        when (currentIsWrite && !io.cartridge.isEmulated) {
+          reg_nWR := 0.U
+        }
       }
     }
     is (State.RamStage1) {
@@ -378,6 +385,11 @@ class CartridgeController extends Module {
       regRamWriteData := ramTarget.dataWrite
       when (io.enable) {
         waitCounter := waitCounter - 1.U
+        // Physical cartridges: end the write pulse one cycle early, so the address and data stay
+        // driven for a full cycle after /WE rises (Flash latches data on the rising edge).
+        when (currentIsWrite && !io.cartridge.isEmulated && waitCounter === 1.U) {
+          reg_nWR := 1.U
+        }
         when (waitCounter === 0.U) {
           state := State.RamStage2
           regReadData := io.cartridge.AHiIn
@@ -413,7 +425,7 @@ class CartridgeController extends Module {
         when (io.enable) {
           state := State.RamStage0
           when (ramTarget.write) {
-            reg_nWR := 0.U
+            reg_nWR := !io.cartridge.isEmulated
           } .otherwise {
             reg_nRD := 0.U
           }

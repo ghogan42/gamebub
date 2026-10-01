@@ -19,9 +19,11 @@ object SimGba extends App {
 
   // SIM_PHYSICAL_CART=1: serve ROM like a physical cartridge (see SimGba.physicalCart).
   val physicalCart = sys.env.get("SIM_PHYSICAL_CART").contains("1")
+  // SIM_SLOW_CART=1 (with SIM_PHYSICAL_CART): model a slower cartridge chip/bus turnaround.
+  val slowCart = sys.env.get("SIM_SLOW_CART").contains("1")
 
   ChiselStage.emitSystemVerilogFile(
-    new SimGba(physicalCart),
+    new SimGba(physicalCart, slowCart),
     args,
     firtoolOpts = Array(
       "--preserve-aggregate=1d-vec",
@@ -37,7 +39,9 @@ object SimGba extends App {
 ///   with ROM data served from the physical bus signals (address latched on nCS falling edge,
 ///   incremented on nRD rising edge), like a real Game Pak. Backup memory and GPIO still come from
 ///   the emulated cartridge.
-class SimGba(physicalCart: Boolean = false) extends Module {
+///   slowCart: (physical mode) ROM data is only valid once nRD has been low for 2 cycles, or 1 cycle
+///   if the data bus was already an input (no bus turnaround) -- garbage otherwise.
+class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val ppu = Output(new PpuOutput)
@@ -158,12 +162,29 @@ class SimGba(physicalCart: Boolean = false) extends Module {
     val regLatchedAddress = Cat(regHigh, regLatchedLow)
     // Read ahead so the data for the latched address is valid the cycle nRD goes low (async ROM).
     val romData = cartRom.read(Cat(nextHigh, nextLatchedLow), true.B)
+    // Per-cycle cartridge bus waveform (only when LOG_LEVELS enables sim.cartbus:debug).
+    Logger("sim.cartbus", enable = io.enable).debug(
+      cf"CS=${cart.nCS} CS2=${cart.nCS2} RD=${cart.nRD} WR=${cart.nWR} " +
+      cf"AD=${Mux(cart.ADLoDir, cart.ADLoOut, cart.ADLoIn)}%x out=${cart.ADLoDir} " +
+      cf"AH=${Mux(cart.AHiDir, cart.AHiOut, cart.AHiIn)}%x out=${cart.AHiDir}")
     val gpioAddress = regLatchedAddress >= (0xC2 / 2).U && regLatchedAddress <= (0xC8 / 2).U
     cart.isEmulated := false.B
     // Beyond the end of the ROM, the bus floats to the latched (halfword) address.
     val outOfBounds = Cat(regLatchedAddress, 0.U(1.W)) > io.emuCartRomSize
+    val romCartData = Mux(outOfBounds, regLatchedLow, romData)
+    val romBusData = WireDefault(romCartData)
+    if (slowCart) {
+      val regReadLowCycles = RegInit(0.U(4.W))
+      regReadLowCycles := Mux(cart.nRD, 0.U, Mux(regReadLowCycles.andR, regReadLowCycles, regReadLowCycles + 1.U))
+      val prevDataDirOut = RegNext(cart.ADLoDir, true.B)
+      val readLowCycles = regReadLowCycles + 1.U  // including this cycle
+      val valid = readLowCycles >= 2.U || !prevDataDirOut
+      when (!valid) {
+        romBusData := ~romCartData
+      }
+    }
     when (!cart.nCS && !cart.nRD && !gpioAddress) {
-      cart.ADLoIn := Mux(outOfBounds, regLatchedLow, romData)
+      cart.ADLoIn := romBusData
     }
   }
 

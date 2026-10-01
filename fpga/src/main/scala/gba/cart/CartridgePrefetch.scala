@@ -445,6 +445,8 @@ class CartridgePrefetch extends Module {
         // Cartridge ram request came in, abort current prefetch
         logger.debug("Abort prefetch (RAM request)")
         abortRequest := true.B
+        // No ROM request to hand over (the controller would otherwise start one immediately).
+        romInitiator.request := false.B
         when (io.enable) {
           buffer.io.flush := true.B
           regState := State.Idle
@@ -463,8 +465,9 @@ class CartridgePrefetch extends Module {
           when (io.enable) {
             regState := State.Idle
           }
-          // Make sure the burst ends.
+          // Make sure the burst ends, without requesting the next address.
           abortRequest := true.B
+          romInitiator.request := false.B
         } .otherwise {
           when (io.enable) {
             buffer.io.writeEnable := true.B

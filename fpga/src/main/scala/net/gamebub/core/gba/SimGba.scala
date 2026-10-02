@@ -172,6 +172,15 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
     regLatchedLow := nextLatchedLow
     regHigh := nextHigh
     val regLatchedAddress = Cat(regHigh, regLatchedLow)
+    // A16-23 are live address lines during a ROM access: they must not change while nCS is low.
+    // (Checked on the value just before the clock edge, i.e. the second half of the previous cycle,
+    // since the controller may change A16-23 mid-cycle.)
+    val lateBad = RegNext(io.enable && !cart.nCS && !prevNCS && cart.AHiDir && cart.AHiOut =/= regHigh, false.B)
+    val lateValue = RegNext(cart.AHiOut)
+    val lateHigh = RegNext(regHigh)
+    when (lateBad) {
+      printf(cf"CARTBUS: A16-23 changed during ROM access (latched=${lateHigh}%x now=${lateValue}%x)\n")
+    }
     // Read ahead so the data for the latched address is valid the cycle nRD goes low (async ROM).
     val romData = cartRom.read(Cat(nextHigh, nextLatchedLow), true.B)
     // Per-cycle cartridge bus waveform (only when LOG_LEVELS enables sim.cartbus:debug).

@@ -316,6 +316,23 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
     }
   }
 
+  // Sim-only trace (SIM_HBLANK_TRACE=1): bus requests around H-blank of lines 0x00 and 0x81.
+  if (sys.env.get("SIM_HBLANK_TRACE").contains("1")) {
+    import chisel3.util.experimental.BoringUtils
+    val line = BoringUtils.bore(gba.ppu.scanline)
+    val tick = BoringUtils.bore(gba.ppu.tick)
+    val inWindow = ((line === 0x00.U || line === 0x81.U) && tick >= 990.U) || ((line === 0x01.U || line === 0x82.U) && tick < 40.U)
+    val port = gba.bus.io.initiatorPort
+    val mreq = BoringUtils.bore(port.MREQ)
+    val addr = BoringUtils.bore(port.ADDR)
+    val write = BoringUtils.bore(port.WRITE)
+    val clken = BoringUtils.bore(port.CLKEN)
+    val irq = BoringUtils.bore(gba.cpu.io.IRQ)
+    when (io.enable && inWindow) {
+      printf(cf"HBT line=${line}%x tick=${tick} irq=${irq} mreq=${mreq} clken=${clken} wr=${write} addr=${addr}%x\n")
+    }
+  }
+
   // Sim-only check at the system bus: ROM data returned to the CPU/DMA must match the ROM image.
   {
     import chisel3.util.experimental.BoringUtils

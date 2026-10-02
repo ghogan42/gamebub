@@ -23,9 +23,12 @@ object SimGba extends App {
   val slowCart = sys.env.get("SIM_SLOW_CART").contains("1")
   // SIM_PHYSICAL_FLASH=1 (with SIM_PHYSICAL_CART): cart Flash save is a physical MX29L010 model.
   val physicalFlash = sys.env.get("SIM_PHYSICAL_FLASH").contains("1")
+  // SIM_BUSHOLD=1 (with SIM_PHYSICAL_FLASH): model bus-hold on the save data lines (A16-23) with a
+  // cart that drives high weakly (e.g. EZ-Flash Omega through the 74LVCH16T245's bus-hold).
+  val busHold = sys.env.get("SIM_BUSHOLD").contains("1")
 
   ChiselStage.emitSystemVerilogFile(
-    new SimGba(physicalCart, slowCart, physicalFlash),
+    new SimGba(physicalCart, slowCart, physicalFlash, busHold),
     args,
     firtoolOpts = Array(
       "--preserve-aggregate=1d-vec",
@@ -47,7 +50,10 @@ object SimGba extends App {
 ///   like a Macronix MX29L010 (command state machine, ID C2/09, empty contents). Conservative timing:
 ///   the address is latched when /WE (or /CE) falls only if it was already driven and stable in the
 ///   previous cycle; data is latched from the last cycle /WE is low.
-class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalFlash: Boolean = false) extends Module {
+///   busHold: (physical Flash) the save data lines keep their last level (bus-hold); the cart can pull
+///   a bit low but can't raise a bit that is held low.
+class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalFlash: Boolean = false,
+    busHold: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val ppu = Output(new PpuOutput)
@@ -264,9 +270,19 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
         }
       }
       regReadAddress := readAddress
-      when (readActive) {
-        val a = readAddress
-        cart.AHiIn := Mux(regIdMode, Mux(a === 0.U, 0xC2.U, Mux(a === 1.U, 0x09.U, 0x00.U)), 0xFF.U)
+      val flashData = Mux(regIdMode, Mux(readAddress === 0.U, 0xC2.U, Mux(readAddress === 1.U, 0x09.U, 0x00.U)), 0xFF.U)
+      if (busHold) {
+        // Level held on A16-23: whatever was last driven (by the FPGA, or by the cart while reading).
+        val regHeld = RegInit(0.U(8.W))
+        val busValue = Mux(cart.AHiDir, cart.AHiOut, Mux(readActive, flashData & regHeld, regHeld))
+        regHeld := busValue
+        when (readActive) {
+          cart.AHiIn := flashData & regHeld
+        }
+      } else {
+        when (readActive) {
+          cart.AHiIn := flashData
+        }
       }
     }
   }

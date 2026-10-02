@@ -15,7 +15,7 @@ public:
     int config_backup_type;
     int config_backup_size;
     bool config_backup_autodetect;
-    bool config_has_gpio;
+    bool config_has_gpio = false;
 
 private:
     std::filesystem::path rom_path;

@@ -48,6 +48,8 @@ class Dma extends Module {
 
     /// Whether the CPU must be kept off the bus (DMA startup cycles).
     val blockCpu = Output(Bool())
+    /// The bus completes a cycle (any in-flight access finishes, a new one can start).
+    val busCycle = Input(Bool())
   })
   private val logger = Logger("dma", enable = io.enable)
 
@@ -77,6 +79,8 @@ class Dma extends Module {
   val dataLatch = Reg(UInt(32.W))
 
   io.blockCpu := false.B
+  // Whether a higher priority channel than the one being processed in the loop below is active.
+  var higherChannelActive = false.B
 
   for (i <- 0 until 4) {
     val configSource = regConfigSource(i)
@@ -97,9 +101,10 @@ class Dma extends Module {
     val regStage = Reg(UInt(1.W))
     val regSourceAddressHalfword = Reg(UInt(1.W))
     val regSourceInvalid = Reg(Bool())
-    /// Remaining internal cycles at the end of a transfer (GBATEK: 2I), during which the DMA
-    /// still owns the bus.
+    /// Remaining internal cycles at the end of a transfer, during which the DMA still owns the bus.
     val regFinishCycles = RegInit(0.U(2.W))
+    /// Whether the DMA still has to take the bus for its initial internal cycle.
+    val regStartup = RegInit(false.B)
 
     val busActive = WireDefault(false.B)
     io.irq(i) := false.B
@@ -152,6 +157,7 @@ class Dma extends Module {
         regInitial := true.B
         regStage := 0.U
         regAccessedCart := false.B
+        regStartup := true.B
       }
     }
 
@@ -165,7 +171,18 @@ class Dma extends Module {
     }
     val isNotBlocked = !isAnyChannelStoring || regStage === 1.U || !regInitial
 
-    // The cycle the transfer completes, plus regFinishCycles more (2I total).
+    // Internal cycles (GBATEK: 2I): one when the DMA takes over the bus, before its first access,
+    // and one at the end, the cycle the transfer completes (plus regFinishCycles more, none).
+    // The cartridge prefetch unit keeps running during the first one, which matters when the DMA
+    // then accesses the cartridge (mGBA suite timing tests: DMA from/to ROM with prefetch).
+    val isStarting = active && regStartup && !higherChannelActive
+    when (isStarting) {
+      // Keep the CPU from starting new accesses; the cycle in which the bus is free is the internal cycle.
+      io.blockCpu := true.B
+      when (io.enable && io.busCycle) {
+        regStartup := false.B
+      }
+    }
     val isCompleting = active && regStage === 0.U && regCount === 0.U && !regInitial
     when (isCompleting) {
       io.blockCpu := true.B
@@ -178,7 +195,7 @@ class Dma extends Module {
     }
 
     // Run DMA
-    when (io.enable && active && isNotBlocked) {
+    when (io.enable && active && isNotBlocked && !isStarting) {
       when (regStage === 0.U) {
         val complete = regCount === 0.U && !regInitial
         // Begin Load (if not end)
@@ -202,7 +219,7 @@ class Dma extends Module {
             logger.info(cf"${i}: complete")
             io.irq(i) := control.irq
             active := false.B
-            regFinishCycles := 1.U
+            regFinishCycles := 0.U
             when (control.repeat && isAudioFifo) {
               // Audio fifo is forced at 4 words and fixed destination
               regCount := 4.U
@@ -271,5 +288,7 @@ class Dma extends Module {
         }
       }
     }
+
+    higherChannelActive = higherChannelActive || active
   }
 }

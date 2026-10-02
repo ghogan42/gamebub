@@ -77,5 +77,9 @@ void Cartridge::detect_backup_type() {
 }
 
 void Cartridge::apply_overrides() {
-  // TODO set config_has_gpio appropriately
+  // GPIO (RTC) for games using Seiko's RTC library (Pokemon Ruby/Sapphire/Emerald, ...).
+  config_has_gpio = find_string(rom, "SIIRTC_V");
+  if (config_has_gpio) {
+    printf("Detected RTC (GPIO)\n");
+  }
 }

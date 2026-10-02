@@ -36,6 +36,8 @@ class Compositor extends Module {
     val enable = Input(Bool())
 
     val displayControl = Input(new PpuRegisters.DisplayControl)
+    /// Which backgrounds are currently visible (displayControl.enableBg only says which are fetched)
+    val bgVisible = Input(UInt(4.W))
     val bgControl = Input(Vec(4, new PpuRegisters.BackgroundControl))
     val win0Bounds = Input(new PpuRegisters.WindowBounds)
     val win1Bounds = Input(new PpuRegisters.WindowBounds)
@@ -299,7 +301,7 @@ class Compositor extends Module {
       regSortBgMosaic(subCycle).opaque := opaque
     }
 
-    when (bgFifo.valid && opaque && io.displayControl.enableBg(subCycle) && regSortWindow.bg(subCycle)) {
+    when (bgFifo.valid && opaque && io.bgVisible(subCycle) && regSortWindow.bg(subCycle)) {
       when (regSortFirst.isBackdrop || bgPriority < regSortFirst.priority) {
         nextFirstLayer.isBackdrop := false.B
         nextFirstLayer.isObj := false.B

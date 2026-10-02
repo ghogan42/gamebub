@@ -333,6 +333,50 @@ class SimGba(physicalCart: Boolean = false, slowCart: Boolean = false, physicalF
     }
   }
 
+  // Sim-only trace (SIM_PPUREG_TRACE=1): completed writes to the PPU (0x04000000-0x0400005F) and DMA
+  // (0x040000B0-0x040000DF) registers
+  // with frame, scanline, tick and initiator (arbiter port one-hot: bits 0-3 DMA0-3, bit 4 CPU).
+  if (sys.env.get("SIM_PPUREG_TRACE").contains("1")) {
+    import chisel3.util.experimental.BoringUtils
+    val line = BoringUtils.bore(gba.ppu.scanline)
+    val tick = BoringUtils.bore(gba.ppu.tick)
+    val accessDone = BoringUtils.bore(gba.bus.accessDone)
+    val busy = BoringUtils.bore(gba.bus.regAccessBusy)
+    val address = BoringUtils.bore(gba.bus.regAccessAddress)
+    val isWrite = BoringUtils.bore(gba.bus.regAccessWrite)
+    val size = BoringUtils.bore(gba.bus.regAccessSize)
+    val wdata = BoringUtils.bore(gba.bus.requestDataWrite)
+    val source = BoringUtils.bore(gba.busArbiter.regRequestSource).asUInt
+    val frame = RegInit(0.U(32.W))
+    val prevLine = RegNext(line)
+    when (io.enable && line === 160.U && prevLine =/= 160.U) {
+      frame := frame + 1.U
+    }
+    when (io.enable && busy && accessDone && isWrite && address(31, 8) === 0x040000.U && (address(7, 0) < 0x60.U || (address(7, 0) >= 0xB0.U && address(7, 0) < 0xE0.U))) {
+      printf(cf"PPUREG frame=${frame} line=${line} tick=${tick} src=${source}%b addr=${address}%x size=${size.asUInt} data=${wdata}%x\n")
+    }
+    // History of the last bus accesses, printed when a PPU register write lands in ticks 4-38 of a visible line.
+    val histLen = 160
+    val histAddr = Reg(Vec(histLen, UInt(32.W)))
+    val histTick = Reg(Vec(histLen, UInt(11.W)))
+    val histLine = Reg(Vec(histLen, UInt(8.W)))
+    when (io.enable && busy && accessDone) {
+      histAddr(0) := address
+      histTick(0) := tick
+      histLine(0) := line
+      for (i <- 1 until histLen) {
+        histAddr(i) := histAddr(i - 1)
+        histTick(i) := histTick(i - 1)
+        histLine(i) := histLine(i - 1)
+      }
+      when (isWrite && address === 0x04000018.U && line < 160.U && tick >= 4.U && tick < 39.U) {
+        for (i <- histLen - 1 to 0 by -1) {
+          printf(cf"PPUHIST line=${histLine(i)} tick=${histTick(i)} addr=${histAddr(i)}%x\n")
+        }
+      }
+    }
+  }
+
   // Sim-only check at the system bus: ROM data returned to the CPU/DMA must match the ROM image.
   {
     import chisel3.util.experimental.BoringUtils

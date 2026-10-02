@@ -201,14 +201,6 @@ class CartridgeController extends Module {
       when (!io.cartridge.isEmulated) {
         io.cartridge.ADLoOut := ramTarget.address(15, 0)
         io.cartridge.ADLoDir := true.B
-        // Reads: pre-charge the data lines (A16-23 / D0-7) high before the cart drives them. The
-        // cartridge level shifters (74LVCH16T245) have bus-hold, which otherwise keeps the last
-        // driven level (e.g. A16-23 = 00 from ROM accesses); some carts (e.g. EZ-Flash Omega's
-        // emulated Flash) can't drive high strongly enough to overpower it, but do pull low reliably.
-        when (!ramTarget.write) {
-          io.cartridge.AHiOut := 0xFF.U
-          io.cartridge.AHiDir := true.B
-        }
       }
 
       when (io.enable) {

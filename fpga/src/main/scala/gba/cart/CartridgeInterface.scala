@@ -43,4 +43,8 @@ class CartridgeInterface extends Bundle {
   /// Set to true if this is an emulated cartridge: read data will be sampled
   /// one cycle later allowing for improved timing.
   val isEmulated = Input(Bool())
+  /// (Emulated cartridge) whether it has GPIO (registers at 0xC4-0xC9) / EEPROM (in ROM region 2),
+  /// which are selected on the nCS falling edge.
+  val emuHasGpio = Input(Bool())
+  val emuHasEeprom = Input(Bool())
 }

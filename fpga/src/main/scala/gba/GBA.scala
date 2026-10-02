@@ -138,6 +138,7 @@ class GBA extends Module {
   dma.io.triggerVideo := ppu.io.dmaTriggerVideo
   dma.io.stopVideo := ppu.io.dmaStopVideo
   mmio.targets(3) <> dma.io.mmio
+  dma.io.busCycle := busArbiter.io.outputPort.CLKEN
   interrupt.io.peripheralIrq.dma := dma.io.irq.asUInt
   for (i <- 0 until 4) {
     busArbiter.io.inputPorts(i) <> dma.io.busInitiator(i)

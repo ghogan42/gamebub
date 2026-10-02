@@ -379,6 +379,8 @@ class HandheldGba extends Module with Core {
     doStall := gba.io.ewramStall
 
     gba.io.cartridge.isEmulated := false.B
+    gba.io.cartridge.emuHasGpio := false.B
+    gba.io.cartridge.emuHasEeprom := false.B
     io.cartridge.enabled := true.B
     io.cartridge.bank0Dir := gba.io.cartridge.AHiDir
     io.cartridge.bank0Out := gba.io.cartridge.AHiOut

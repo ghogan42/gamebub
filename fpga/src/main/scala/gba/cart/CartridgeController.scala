@@ -159,9 +159,14 @@ class CartridgeController extends Module {
   // the address on its falling edge), costing a cycle when it ends a burst that kept nCS low (e.g. a
   // prefetch burst). An emulated cartridge takes the address from reqStart instead, so it can start
   // immediately, like on hardware. Except for addresses that may hit an emulated peripheral (EEPROM
-  // in region 2, GPIO in the first 256 bytes), which do rely on the nCS edge.
-  val romPeripheralPossible = romRequests(2) || romRequestAddress(23, 7) === 0.U
-  val immediateRomStart = hasRomRequest && reg_nCS === 0.U && (io.abortRequest || endRomBurst) &&
+  // in region 2, GPIO in the first 256 bytes) the cartridge has, which do rely on the nCS edge.
+  val romPeripheralPossible = (romRequests(2) && io.cartridge.emuHasEeprom) ||
+    (romRequestAddress(23, 7) === 0.U && io.cartridge.emuHasGpio)
+  // Except when the aborted access (e.g. a prefetch fetch) is in its last wait cycle, i.e. would complete
+  // next cycle: then the new access starts a cycle later, as on hardware (mGBA suite timing tests; cf.
+  // NanoBoyAdvance's prefetch model).
+  val abortingLastCycle = state === State.RomStage1 && waitCounter === 0.U
+  val immediateRomStart = hasRomRequest && reg_nCS === 0.U && (endRomBurst || (io.abortRequest && !abortingLastCycle)) &&
     io.cartridge.isEmulated && !romPeripheralPossible
   val initialRomWait = Mux1H(romRequests, waitRomFirst)
   when (state === State.Idle || endRomBurst || endRamBurst || immediateRomStart) {

@@ -110,6 +110,8 @@ class EmulatedCartridge extends Module {
   io.interface.ADLoIn := regMemRomReadData
   io.interface.AHiIn := DontCare
   io.interface.isEmulated := true.B
+  io.interface.emuHasGpio := io.config.hasGpio
+  io.interface.emuHasEeprom := io.config.backupType === EmulatedCartridge.BackupType.Eeprom
   io.stall := false.B
 
   when (regMemRomBusy) {

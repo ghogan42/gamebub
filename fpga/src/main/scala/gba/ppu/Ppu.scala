@@ -109,34 +109,43 @@ class Ppu extends Module {
     }
   }
 
-  // BG enable delay: a background enabled mid-frame only appears after 3 scanline boundaries
-  // (immediately if enabled during VBlank or forced blank). Disabling is immediate.
-  val displayControlEffective = WireDefault(regDisplayControl)
+  // BG enable timing (mGBA suite "Layer toggle" / "Layer toggle 2", matches hardware): a background
+  // pixel on line L is shown only if the BG is enabled now AND was enabled at the start of line L-2.
+  // So enabling takes effect 3 lines later (or immediately, mid-line, if the BG was disabled less than
+  // 2 lines ago), and disabling is immediate. During forced blank the delay is bypassed.
+  // To show a mid-line enable, BG data is always fetched for every layer the video mode has
+  // (displayControlFetch); the compositor applies bgVisible per pixel.
+  val displayControlFetch = WireDefault(regDisplayControl)
+  displayControlFetch.enableBg := MuxLookup(regDisplayControl.mode, "b0100".U)(Seq(
+    0.U -> "b1111".U,
+    1.U -> "b0111".U,
+    2.U -> "b1100".U,
+  ))
+  val bgVisible = Wire(UInt(4.W))
   locally {
-    val prevEnableBg = RegEnable(regDisplayControl.enableBg, 0.U, io.enable)
-    val enableDelay = RegInit(VecInit.fill(4)(0.U(2.W)))
-    val lineStart = tick === (1232 - 1).U
-    for (i <- 0 until 4) {
-      val enabled = regDisplayControl.enableBg(i)
-      when (io.enable) {
-        when (!enabled) {
-          enableDelay(i) := 0.U
-        } .elsewhen (!prevEnableBg(i)) {
-          enableDelay(i) := Mux(scanline >= 160.U || regDisplayControl.forceBlank, 0.U, 3.U)
-        } .elsewhen (lineStart && enableDelay(i) =/= 0.U) {
-          enableDelay(i) := enableDelay(i) - 1.U
-        }
+    // Enable bits sampled once per line, at tick 40 (when the PPU starts fetching the line; matches
+    // hardware: e.g. an enable written from the H-blank IRQ that lands in the first cycles of the next
+    // line still counts for that line). After the sample in line L, enableHistory(0/1/2) hold the
+    // values sampled in line L / L-1 / L-2; before it, they hold L-1 / L-2 / L-3.
+    val sampleTick = 40
+    val enableHistory = RegInit(VecInit.fill(3)(0.U(4.W)))
+    when (io.enable) {
+      when (regDisplayControl.forceBlank) {
+        enableHistory.foreach(_ := regDisplayControl.enableBg)
+      } .elsewhen (tick === sampleTick.U) {
+        enableHistory(0) := regDisplayControl.enableBg
+        enableHistory(1) := enableHistory(0)
+        enableHistory(2) := enableHistory(1)
       }
     }
-    displayControlEffective.enableBg := VecInit((0 until 4).map(i =>
-      regDisplayControl.enableBg(i) && enableDelay(i) === 0.U && !(prevEnableBg(i) === 0.U && scanline < 160.U && !regDisplayControl.forceBlank)
-    )).asUInt
+    val enabledTwoLinesAgo = Mux(tick > sampleTick.U, enableHistory(2), enableHistory(1))
+    bgVisible := regDisplayControl.enableBg & enabledTwoLinesAgo
   }
 
   // Background renderer
   val bgRender = Module(new BackgroundRenderer)
   bgRender.io.enable := io.enable
-  bgRender.io.displayControl := displayControlEffective
+  bgRender.io.displayControl := displayControlFetch
   bgRender.io.bgControl := regBgControl
   bgRender.io.bgOffX := regBgOffX
   bgRender.io.bgOffY := regBgOffY
@@ -152,7 +161,16 @@ class Ppu extends Module {
 
   // I/O registers
   io.mmio <> MmioMap(
-    0x0 -> MmioMap.Entry.rw(regDisplayControl),
+    0x0 -> MmioMap.Entry(
+      MmioMap.ReadFn(regDisplayControl),
+      MmioMap.WriteFn((enable, data, mask) => {
+        when (enable) {
+          regDisplayControl := MMIO.mask(regDisplayControl, data, mask)
+          Logger("ppu.dispcnt", enable = io.enable).debug(
+            cf"DISPCNT write line=${scanline}%x tick=${tick} data=${data(15, 0)}%x")
+        }
+      })
+    ),
     0x4 -> MmioMap.Entry(
       // DISPSTAT and VCOUNT
       MmioMap.ReadFn(_ => {
@@ -240,7 +258,8 @@ class Ppu extends Module {
   // Compositor
   val compositor = Module(new Compositor)
   compositor.io.enable := io.enable
-  compositor.io.displayControl := displayControlEffective
+  compositor.io.displayControl := displayControlFetch
+  compositor.io.bgVisible := bgVisible
   compositor.io.bgControl := regBgControl
   compositor.io.win0Bounds := regWin0Bounds
   compositor.io.win1Bounds := regWin1Bounds

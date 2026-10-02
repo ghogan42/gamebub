@@ -215,6 +215,9 @@ class Bus(
         // The target returned the whole word at once.
         io.initiatorPort.RDATA := wideDataRead
         regLastDataRead := wideDataRead
+        // The split access is over (otherwise, without a new request this cycle, e.g. the CPU halting,
+        // isAvailable would stay low and the bus would hang).
+        regAccessSplit := false.B
       } .elsewhen (regAccessSplit) {
         when (regAccessSplitPhase === 0.U) {
           // Start the second half.

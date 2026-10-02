@@ -81,6 +81,8 @@ class Dma extends Module {
   io.blockCpu := false.B
   // Whether a higher priority channel than the one being processed in the loop below is active.
   var higherChannelActive = false.B
+  // Whether a higher priority channel is active and still has to do its initial internal cycle.
+  var higherChannelStarting = false.B
 
   for (i <- 0 until 4) {
     val configSource = regConfigSource(i)
@@ -195,7 +197,12 @@ class Dma extends Module {
     }
 
     // Run DMA
-    when (io.enable && active && isNotBlocked && !isStarting) {
+    // A channel waits for its own initial cycle (it only gets one once no higher priority channel is
+    // active). While a higher priority channel does its initial cycle (it already owns the bus), a
+    // lower priority one can finish a store but not start a new load: with two channels triggered
+    // together (e.g. on H-blank), the higher priority one must go first (Phantasy Star Collection
+    // relies on DMA2 reading back DMA1's value as open bus).
+    when (io.enable && active && isNotBlocked && !regStartup && !(regStage === 0.U && higherChannelStarting)) {
       when (regStage === 0.U) {
         val complete = regCount === 0.U && !regInitial
         // Begin Load (if not end)
@@ -289,5 +296,6 @@ class Dma extends Module {
     }
 
     higherChannelActive = higherChannelActive || active
+    higherChannelStarting = higherChannelStarting || (active && regStartup)
   }
 }

@@ -35,6 +35,7 @@ const ROM_HEADER_LENGTH: usize = 192;
 const REG_EMU_CART_CONFIG: u32 = 0x0000_0000;
 const REG_EMU_CART_ROM_SIZE: u32 = 0x0000_0004;
 const REG_GB_PLAYER: u32 = 0x0000_0008;
+const REG_AUDIO_LOWPASS: u32 = 0x0000_000C;
 const REG_IMU_GYRO_Z: u32 = 0x0000_0100;
 const REG_IMU_ACCEL_X: u32 = 0x0000_0104;
 const REG_IMU_ACCEL_Y: u32 = 0x0000_0108;
@@ -53,6 +54,7 @@ const SETTING_RESET: u16 = 0;
 const SETTING_COLOR_CORRECTIONS: u16 = 1;
 const SETTING_GAME_BOY_PLAYER: u16 = 2;
 const SETTING_PIXEL_EFFECT: u16 = 3;
+const SETTING_AUDIO_LOWPASS: u16 = 4;
 
 #[derive(Debug, Error)]
 pub enum GbaError {
@@ -369,6 +371,14 @@ impl Gba {
                         .collect(),
                     },
                 },
+                CoreSetting {
+                    id: SETTING_AUDIO_LOWPASS,
+                    label: "8 kHz Low-Pass Filter".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 0,
+                    inner: CoreSettingType::Checkbox { value: 1 },
+                },
             ]
             .into_iter()
             .collect(),
@@ -646,6 +656,10 @@ impl CoreHandler for Gba {
                 SETTING_PIXEL_EFFECT,
                 kvs::keys::GBA_PIXEL_EFFECT.get().unwrap() as u32,
             ),
+            (
+                SETTING_AUDIO_LOWPASS,
+                kvs::keys::GBA_AUDIO_LOWPASS.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -668,6 +682,10 @@ impl CoreHandler for Gba {
             SETTING_PIXEL_EFFECT => {
                 kvs::keys::GBA_PIXEL_EFFECT.set(&(value as i32));
                 let _ = device.fpga.write_u32(fpga::REG_CTRL_PIXEL_EFFECT, value);
+            }
+            SETTING_AUDIO_LOWPASS => {
+                kvs::keys::GBA_AUDIO_LOWPASS.set(&(value == 1));
+                let _ = device.fpga.write_u32(REG_AUDIO_LOWPASS, value);
             }
             _ => {}
         }

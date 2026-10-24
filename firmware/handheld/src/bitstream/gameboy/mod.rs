@@ -33,6 +33,7 @@ const REG_RTC_STATE: u32 = 0x0000_0018;
 const REG_RTC_LATCHED: u32 = 0x0000_001C;
 const REG_IMU_ACCEL_X: u32 = 0x0000_0020;
 const REG_IMU_ACCEL_Y: u32 = 0x0000_0024;
+const REG_AUDIO_LOWPASS: u32 = 0x0000_0028;
 const REG_DMG_PALETTE_OFF: u32 = 0x0000_0030;
 const REG_STAT_STALLS: u32 = 0x0000_1000;
 const REG_STAT_CYCLES: u32 = 0x0000_1004;
@@ -50,6 +51,7 @@ const SETTING_GB_MODE: u16 = 1;
 const SETTING_GBC_COLOR_CORRECTIONS: u16 = 2;
 const SETTING_GB_COLOR_PALETTE: u16 = 3;
 const SETTING_PIXEL_EFFECT: u16 = 4;
+const SETTING_AUDIO_LOWPASS: u16 = 5;
 
 /// GB_PIXEL_EFFECT's setting-list index doesn't match the shared hardware
 /// mode numbers 1:1 -- hw modes 4/5 (Scanlines) are GBA-only, so the
@@ -286,6 +288,14 @@ impl Gameboy {
                         .collect(),
                     },
                 },
+                CoreSetting {
+                    id: SETTING_AUDIO_LOWPASS,
+                    label: "8 kHz Low-Pass Filter".into(),
+                    address: 0xFFFF_FFFF,
+                    mask: 0,
+                    default: 0,
+                    inner: CoreSettingType::Checkbox { value: 1 },
+                },
             ]
             .into_iter()
             .collect(),
@@ -476,6 +486,10 @@ impl CoreHandler for Gameboy {
                 SETTING_PIXEL_EFFECT,
                 kvs::keys::GB_PIXEL_EFFECT.get().unwrap() as u32,
             ),
+            (
+                SETTING_AUDIO_LOWPASS,
+                kvs::keys::GB_AUDIO_LOWPASS.get().unwrap() as u32,
+            ),
         ]
     }
 
@@ -538,6 +552,10 @@ impl CoreHandler for Gameboy {
                     fpga::REG_CTRL_PIXEL_EFFECT,
                     pixel_effect_hw_mode(is_dmg, value as i32),
                 );
+            }
+            SETTING_AUDIO_LOWPASS => {
+                kvs::keys::GB_AUDIO_LOWPASS.set(&(value == 1));
+                let _ = device.fpga.write_u32(REG_AUDIO_LOWPASS, value);
             }
             _ => {}
         }

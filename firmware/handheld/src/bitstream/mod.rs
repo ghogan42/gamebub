@@ -55,6 +55,9 @@ pub fn program_fpga(path: &Path) {
         .unwrap();
     device.fpga.set_display_mode(display_mode).unwrap();
     device.fpga.enable_interrupt(fpga::Irq::Button).unwrap();
+    // Framework registers reset on reconfiguration, so global display
+    // settings have to be re-applied for every bitstream.
+    device.set_extra_color_fix(crate::kvs::keys::EXTRA_COLOR_FIX.get().unwrap());
     ui::send(ui::Message::InputState(device.get_input_state().unwrap()));
     ui::send(ui::Message::Redraw);
     led::LedController::set_behavior(led::LedBehavior::OFF);

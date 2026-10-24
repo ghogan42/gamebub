@@ -708,6 +708,46 @@ impl Device<'_> {
         self.lcd_backlight.set_brightness(brightness);
     }
 
+    /// Set the display color-temperature preset (0 = Normal, 1 = Warm,
+    /// 2 = Cool). Only has an effect on rev4 (ILI9806E); no-op on other
+    /// revisions, which don't have a panel-level gamma control interface.
+    #[cfg(feature = "has_ili9806e")]
+    pub fn set_color_temperature(&mut self, preset: i32) {
+        self.lcd.set_color_temperature(preset).unwrap();
+    }
+
+    #[cfg(not(feature = "has_ili9806e"))]
+    pub fn set_color_temperature(&mut self, _preset: i32) {}
+
+    /// Apply the "Extra Color Fix" white-point correction (0 = None,
+    /// 1 = D75, 2 = D65).
+    ///
+    /// Unlike `set_color_temperature`, which programs the panel itself, this
+    /// is an FPGA stage applied to the composited video output -- so it
+    /// covers the UI as well as game pixels, on every core. The register
+    /// lives in the framework but resets on FPGA reconfiguration, so this
+    /// must be called again after each bitstream load.
+    ///
+    /// Errors are logged rather than propagated: the FPGA may not be
+    /// programmed yet at every call site, and a missing color correction
+    /// shouldn't be fatal.
+    ///
+    /// rev4 only -- the gains were measured from its ILI9806E panel, and
+    /// the FPGA stage isn't built for the other revisions (see
+    /// `Revision.whitePointFix`).
+    #[cfg(feature = "has_ili9806e")]
+    pub fn set_extra_color_fix(&mut self, mode: i32) {
+        if let Err(e) = self
+            .fpga
+            .write_u32(drivers::fpga::REG_CTRL_COLOR_FIX, mode as u32)
+        {
+            log::warn!("Failed to set extra color fix: {:?}", e);
+        }
+    }
+
+    #[cfg(not(feature = "has_ili9806e"))]
+    pub fn set_extra_color_fix(&mut self, _mode: i32) {}
+
     /// Initialize the system time (after boot).
     ///
     /// Reads the time from the RTC. Sets a default time if no time is set.

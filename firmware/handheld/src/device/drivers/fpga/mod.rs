@@ -34,12 +34,12 @@ pub const REG_CTRL_VIBRATE: u32 = 0xF100_1014;
 /// REG_CTRL_DMG_SHADOW_BG), 9 = Shadow 1, 10 = Shadow 2, 11 = Shadow 3
 /// (Gameboy CGB-only, blend against a per-pixel-derived value computed
 /// entirely in hardware -- ignores REG_CTRL_DMG_SHADOW_BG).
-pub const REG_CTRL_PIXEL_EFFECT: u32 = 0xF100_1018;
+pub const REG_CTRL_PIXEL_EFFECT: u32 = 0xF100_1024;
 /// Background color the Gameboy DMG-only "Shadow" pixel effects (hw modes
 /// 6-8) blend against, packed as `0x00RRGGBB` (8 bits/channel,
 /// approximate -- see `dmg_palette::DmgPalette::background_rgb888_approx`).
 /// Not used by the CGB Shadow effects (hw modes 9-11).
-pub const REG_CTRL_DMG_SHADOW_BG: u32 = 0xF100_101C;
+pub const REG_CTRL_DMG_SHADOW_BG: u32 = 0xF100_1028;
 
 pub const REG_CTRL_CMD_HOST: u32 = 0xF100_1100;
 pub const REG_CTRL_CMD_CORE: u32 = 0xF100_1104;

@@ -36,6 +36,12 @@ pub static GBA_COLOR_PROFILE: KvsKey<i32> = KvsKey::new_with_default("gba-colors
 /// Whether to enable Game Boy Player functionality
 pub static GBA_ENABLE_GBP: KvsKey<bool> = KvsKey::new_with_default("gba-enable-gbp", true);
 
+/// Whether the GBA core's 8 kHz audio low-pass filter is enabled
+pub static GBA_AUDIO_LOWPASS: KvsKey<bool> = KvsKey::new_with_default("gba-audio-lpf", false);
+
+/// Whether the Gameboy (DMG/CGB) core's 8 kHz audio low-pass filter is enabled
+pub static GB_AUDIO_LOWPASS: KvsKey<bool> = KvsKey::new_with_default("gb-audio-lpf", false);
+
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);
 
@@ -64,6 +70,8 @@ pub fn flush_all() {
     GBA_SKIP_BOOT_ANIM.flush();
     GBA_COLOR_PROFILE.flush();
     GBA_ENABLE_GBP.flush();
+    GBA_AUDIO_LOWPASS.flush();
+    GB_AUDIO_LOWPASS.flush();
     STARTUP_ACTION.flush();
     LAST_FIRMWARE_VERSION.flush();
     GBA_BIOS_WARNING.flush();

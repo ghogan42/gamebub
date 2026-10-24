@@ -144,6 +144,8 @@ class HandheldGba extends Module with Core {
   val configRegEmuCart = RegInit(0.U.asTypeOf(new EmulatedCartridge.Config))
   val configRegRomSize = RegInit(0.U(25.W))
   val configRegGBPlayer = RegInit(0.U(1.W))
+  /** Audio low-pass filter: 0 = off, 1 = 5 kHz, 2 = 8 kHz. */
+  val configRegAudioLowpass = RegInit(0.U(2.W))
   val configRegImuGyroZ = RegInit(0.U(12.W))
   val configRegImuAccelX = RegInit(0.U(12.W))
   val configRegImuAccelY = RegInit(0.U(12.W))
@@ -217,6 +219,7 @@ class HandheldGba extends Module with Core {
         // Rom size (minus one), max (2**25 - 1), 32MiB
         0x0004 -> RegisterMap.Entry.rw(configRegRomSize),
         0x0008 -> RegisterMap.Entry.rw(configRegGBPlayer),
+        0x000C -> RegisterMap.Entry.rw(configRegAudioLowpass),
         0x0100 -> RegisterMap.Entry.rw(configRegImuGyroZ),
         0x0104 -> RegisterMap.Entry.rw(configRegImuAccelX),
         0x0108 -> RegisterMap.Entry.rw(configRegImuAccelY),
@@ -437,6 +440,7 @@ class HandheldGba extends Module with Core {
   val audioShift = audioFilter.dataBits - 10
   audioFilter.io.in(0) := gba.io.apu.left << audioShift
   audioFilter.io.in(1) := gba.io.apu.right << audioShift
+  audioFilter.io.lowpassMode := configRegAudioLowpass
   io.audio.left := audioFilter.io.out(0)
   io.audio.right := audioFilter.io.out(1)
 

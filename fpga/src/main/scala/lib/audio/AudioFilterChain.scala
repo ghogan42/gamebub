@@ -37,9 +37,12 @@ class AudioFilterChain(
   val kaiserBeta: Double = 6.0,
   val dcBlockerCutoffHz: Double = 10,
   val chainDcGain: Double = 0.89,
+  val lowpassCutoffsHz: Seq[Double] = Seq(5000.0, 8000.0),
 ) extends Module {
   val io = IO(new Bundle {
     val in = Input(Vec(numChannels, SInt(dataBits.W)))
+    /** Optional low-pass stage: 0 = off, n = lowpassCutoffsHz(n - 1). */
+    val lowpassMode = Input(UInt(log2Ceil(lowpassCutoffsHz.length + 1).W))
     val out = Output(Vec(numChannels, SInt(dataBits.W)))
     val valid = Output(Bool())
   })
@@ -115,7 +118,26 @@ class AudioFilterChain(
   strobeAcc := Mux(strobeFire, nextStrobeAcc - strobeModulo.U, nextStrobeAcc)
   interpolator.io.outEnable := strobeFire
 
-  // Stage 4: DC blockers
+  // Stage 4: Optional low-pass filter
+  //
+  // A first-order low-pass (5 or 8 kHz by default, 6 dB/octave) at the
+  // output rate, for a softer, less harsh sound. It always runs, so changing
+  // the mode just switches which signal continues down the chain.
+  val lowpass = Seq.fill(numChannels)(
+    Module(new FirstOrderLowpass(interpolator.outputBits, lowpassCutoffsHz, outputRateHz))
+  )
+  val lowpassEnable = io.lowpassMode =/= 0.U
+  for (i <- 0 until numChannels) {
+    lowpass(i).io.tick := interpolator.io.outValid
+    lowpass(i).io.in := interpolator.io.out(i)
+    lowpass(i).io.select := (io.lowpassMode - 1.U)(lowpass(i).io.select.getWidth - 1, 0)
+  }
+  val stage4Valid = Mux(lowpassEnable, lowpass.head.io.outValid, interpolator.io.outValid)
+  val stage4Out = (0 until numChannels).map(i =>
+    Mux(lowpassEnable, lowpass(i).io.out, interpolator.io.out(i))
+  )
+
+  // Stage 5: DC blockers
   //
   // This removes the DC offset from the output signal by applying a high-pass filter.
   val poleShift = math.round(-math.log(2 * math.Pi * dcBlockerCutoffHz / outputRateHz) / math.log(2.0)).toInt
@@ -123,11 +145,11 @@ class AudioFilterChain(
     Module(new DcBlocker(interpolator.outputBits, poleShift, dataBits))
   )
   for (i <- 0 until numChannels) {
-    dcBlocker(i).io.tick := interpolator.io.outValid
-    dcBlocker(i).io.in := interpolator.io.out(i)
+    dcBlocker(i).io.tick := stage4Valid
+    dcBlocker(i).io.in := stage4Out(i)
   }
 
-  // Stage 5: Output hold
+  // Stage 6: Output hold
   //
   // Hold the output stable for it to be sampled into the audio output domain.
   val regOut = Seq.fill(numChannels)(RegInit(0.S(dataBits.W)))
@@ -135,5 +157,5 @@ class AudioFilterChain(
     regOut(i) := dcBlocker(i).io.out
     io.out(i) := regOut(i)
   }
-  io.valid := interpolator.io.outValid
+  io.valid := stage4Valid
 }

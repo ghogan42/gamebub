@@ -1,6 +1,7 @@
 package lib.audio
 
 import chisel3._
+import chisel3.util._
 
 object FirstOrderLowpass {
   /**
@@ -21,12 +22,15 @@ object FirstOrderLowpass {
  * so it needs a single multiplier. Updates one cycle after each `tick`; the
  * output is held until the next one, and `outValid` pulses when it updates.
  *
+ * `select` picks the cutoff from `cutoffsHz` (only the coefficient changes,
+ * so switching keeps the filter state).
+ *
  * The impulse response is all positive with unity DC gain, so the output
  * never exceeds the input range (no overshoot).
  */
 class FirstOrderLowpass(
   dataBits: Int,
-  cutoffHz: Double,
+  cutoffsHz: Seq[Double],
   sampleRateHz: Double,
   coeffFracBits: Int = 17,
   stateFracBits: Int = 4,
@@ -34,15 +38,17 @@ class FirstOrderLowpass(
   val io = IO(new Bundle {
     /** Advances the filter by one sample period. */
     val tick = Input(Bool())
+    /** Index into `cutoffsHz`. */
+    val select = Input(UInt(log2Ceil(cutoffsHz.length).max(1).W))
     val in = Input(SInt(dataBits.W))
     val out = Output(SInt(dataBits.W))
     val outValid = Output(Bool())
   })
 
   // b0 in unsigned Q0.(coeffFracBits), as a non-negative SInt.
-  private val b0 = math.round(FirstOrderLowpass.coefficient(cutoffHz, sampleRateHz) * (1L << coeffFracBits))
-  require(b0 > 0 && b0 < (1L << coeffFracBits), "cutoff must be below Nyquist")
-  private val coeff = b0.S((coeffFracBits + 1).W)
+  private val b0s = cutoffsHz.map(f => math.round(FirstOrderLowpass.coefficient(f, sampleRateHz) * (1L << coeffFracBits)))
+  require(b0s.forall(b0 => b0 > 0 && b0 < (1L << coeffFracBits)), "cutoff must be below Nyquist")
+  private val coeff = VecInit(b0s.map(_.S((coeffFracBits + 1).W)))(io.select)
 
   // State in Q(dataBits).(stateFracBits): the fraction bits keep the rounding
   // error fed back through y well below the output LSB.

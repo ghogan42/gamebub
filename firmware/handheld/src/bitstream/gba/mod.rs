@@ -348,11 +348,20 @@ impl Gba {
                 },
                 CoreSetting {
                     id: SETTING_AUDIO_LOWPASS,
-                    label: "8 kHz Low-Pass Filter".into(),
+                    label: "Audio Low-Pass Filter".into(),
                     address: 0xFFFF_FFFF,
                     mask: 0,
                     default: 0,
-                    inner: CoreSettingType::Checkbox { value: 1 },
+                    inner: CoreSettingType::List {
+                        items: ["Off", "5 kHz", "8 kHz"]
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &x)| CoreSettingListItem {
+                                value: i as u32,
+                                label: x.into(),
+                            })
+                            .collect(),
+                    },
                 },
             ]
             .into_iter()
@@ -651,7 +660,7 @@ impl CoreHandler for Gba {
                 let _ = device.fpga.write_u32(REG_GB_PLAYER, value);
             }
             SETTING_AUDIO_LOWPASS => {
-                kvs::keys::GBA_AUDIO_LOWPASS.set(&(value == 1));
+                kvs::keys::GBA_AUDIO_LOWPASS.set(&(value as i32));
                 let _ = device.fpga.write_u32(REG_AUDIO_LOWPASS, value);
             }
             _ => {}

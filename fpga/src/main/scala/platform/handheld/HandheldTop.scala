@@ -739,15 +739,32 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
           effect.g := Mux(dimG, darken(pixel.g, 2), pixel.g)
           effect.b := Mux(dimB, darken(pixel.b, 2), pixel.b)
         }
+        // TEMP TEST: RGB Grid replaced by M/Y/C stripes (see below).
+        // is (3.U) {
+        //   // RGB Grid: Stripe, plus every 3rd row is darkened an additional
+        //   // 12.5% on top of the stripe result, all channels.
+        //   val dimR = gridCol =/= 0.U
+        //   val dimG = gridCol =/= 1.U
+        //   val dimB = gridCol =/= 2.U
+        //   val stripedR = Mux(dimR, darken(pixel.r, 2), pixel.r)
+        //   val stripedG = Mux(dimG, darken(pixel.g, 2), pixel.g)
+        //   val stripedB = Mux(dimB, darken(pixel.b, 2), pixel.b)
+        //   val dimRow = gridRow === 2.U
+        //   effect.r := Mux(dimRow, darken(stripedR, 3), stripedR)
+        //   effect.g := Mux(dimRow, darken(stripedG, 3), stripedG)
+        //   effect.b := Mux(dimRow, darken(stripedB, 3), stripedB)
+        // }
         is (3.U) {
-          // RGB Grid: Stripe, plus every 3rd row is darkened an additional
+          // M/Y/C Grid: per-column, dim one of the three channels to 50%
+          // (column 0 magenta: dim G, column 1 yellow: dim B, column 2
+          // cyan: dim R), plus every 3rd row is darkened an additional
           // 12.5% on top of the stripe result, all channels.
-          val dimR = gridCol =/= 0.U
-          val dimG = gridCol =/= 1.U
-          val dimB = gridCol =/= 2.U
-          val stripedR = Mux(dimR, darken(pixel.r, 2), pixel.r)
-          val stripedG = Mux(dimG, darken(pixel.g, 2), pixel.g)
-          val stripedB = Mux(dimB, darken(pixel.b, 2), pixel.b)
+          val dimR = gridCol === 2.U
+          val dimG = gridCol === 0.U
+          val dimB = gridCol === 1.U
+          val stripedR = Mux(dimR, darken(pixel.r, 1), pixel.r)
+          val stripedG = Mux(dimG, darken(pixel.g, 1), pixel.g)
+          val stripedB = Mux(dimB, darken(pixel.b, 1), pixel.b)
           val dimRow = gridRow === 2.U
           effect.r := Mux(dimRow, darken(stripedR, 3), stripedR)
           effect.g := Mux(dimRow, darken(stripedG, 3), stripedG)

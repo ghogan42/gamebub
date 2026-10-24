@@ -103,8 +103,8 @@ class HandheldGameboy extends Module with Core {
   val configRegImuAccelX = RegInit(0.U(16.W))
   val configRegImuAccelY = RegInit(0.U(16.W))
   val configRegDmgOffColor = RegInit(0.U(16.W))
-  /** Enables the 8 kHz audio low-pass filter. */
-  val configRegAudioLowpass = RegInit(0.U(1.W))
+  /** Audio low-pass filter: 0 = off, 1 = 5 kHz, 2 = 8 kHz. */
+  val configRegAudioLowpass = RegInit(0.U(2.W))
   val statRegStalls = RegInit(0.U(32.W))
   val statRegCycles = RegInit(0.U(32.W))
 
@@ -302,7 +302,7 @@ class HandheldGameboy extends Module with Core {
   val audioShift = audioFilter.dataBits - 10
   audioFilter.io.in(0) := gameboy.io.apu.left << audioShift
   audioFilter.io.in(1) := gameboy.io.apu.right << audioShift
-  audioFilter.io.lowpassEnable := configRegAudioLowpass.asBool
+  audioFilter.io.lowpassMode := configRegAudioLowpass
   io.audio.left := audioFilter.io.out(0)
   io.audio.right := audioFilter.io.out(1)
 

@@ -7,12 +7,13 @@ import org.scalatest.funsuite.AnyFunSuite
 class FirstOrderLowpassSpec extends AnyFunSuite {
   private val dataBits = 19
   private val sampleRate = 48000.0
-  private val cutoff = 8000.0
+  private val cutoffs = Seq(5000.0, 8000.0)
 
   /** Runs `input` through the filter, one sample per 4 cycles; returns the outputs. */
-  private def run(input: Seq[Int]): Seq[Int] = {
+  private def run(input: Seq[Int], select: Int = 1): Seq[Int] = {
     var out = Seq.empty[Int]
-    simulate(new FirstOrderLowpass(dataBits, cutoff, sampleRate)) { dut =>
+    simulate(new FirstOrderLowpass(dataBits, cutoffs, sampleRate)) { dut =>
+      dut.io.select.poke(select)
       dut.io.tick.poke(false)
       for (x <- input) {
         dut.io.in.poke(x)
@@ -27,7 +28,7 @@ class FirstOrderLowpassSpec extends AnyFunSuite {
   }
 
   /** Magnitude response of the ideal (unquantized) filter at `freq`. */
-  private def expectedGain(freq: Double): Double = {
+  private def expectedGain(freq: Double, cutoff: Double): Double = {
     val b0 = FirstOrderLowpass.coefficient(cutoff, sampleRate)
     val w = 2 * math.Pi * freq / sampleRate
     // H(z) = b0 (1 + z^-1) / (1 - (1 - 2 b0) z^-1)
@@ -42,7 +43,9 @@ class FirstOrderLowpassSpec extends AnyFunSuite {
   }
 
   test("-3 dB at the cutoff") {
-    assert(math.abs(expectedGain(cutoff) - 1 / math.sqrt(2)) < 1e-9)
+    for (cutoff <- cutoffs) {
+      assert(math.abs(expectedGain(cutoff, cutoff) - 1 / math.sqrt(2)) < 1e-9)
+    }
   }
 
   test("full-scale step does not overshoot") {
@@ -52,16 +55,17 @@ class FirstOrderLowpassSpec extends AnyFunSuite {
     assert(math.abs(out.last - max) <= 1)
   }
 
-  for (freq <- Seq(1000.0, 8000.0, 16000.0)) {
-    test(f"sine at ${freq / 1000}%.0f kHz matches the ideal response") {
+  for ((cutoff, select) <- cutoffs.zipWithIndex; freq <- Seq(1000.0, 5000.0, 8000.0, 16000.0)) {
+    test(f"${cutoff / 1000}%.0f kHz filter: sine at ${freq / 1000}%.0f kHz matches the ideal response") {
       val amplitude = 100000.0
       val n = 960
       val input = (0 until n).map(i => math.round(amplitude * math.sin(2 * math.Pi * freq * i / sampleRate)).toInt)
-      val out = run(input).drop(n / 2) // skip the transient
+      val out = run(input, select).drop(n / 2) // skip the transient
       val in = input.drop(n / 2)
       def rms(xs: Seq[Int]) = math.sqrt(xs.map(x => x.toDouble * x).sum / xs.length)
       val gain = rms(out) / rms(in)
-      assert(math.abs(gain - expectedGain(freq)) < 0.002, f"gain $gain%.4f, expected ${expectedGain(freq)}%.4f")
+      val expected = expectedGain(freq, cutoff)
+      assert(math.abs(gain - expected) < 0.002, f"gain $gain%.4f, expected $expected%.4f")
     }
   }
 }

@@ -47,11 +47,11 @@ pub static GBA_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gba-pixel-f
 /// 9-11 in CGB mode).
 pub static GB_PIXEL_EFFECT: KvsKey<i32> = KvsKey::new_with_default("gb-pixel-fx", 0);
 
-/// Whether the GBA core's 8 kHz audio low-pass filter is enabled
-pub static GBA_AUDIO_LOWPASS: KvsKey<bool> = KvsKey::new_with_default("gba-audio-lpf", false);
+/// GBA audio low-pass filter: 0 = Off, 1 = 5 kHz, 2 = 8 kHz.
+pub static GBA_AUDIO_LOWPASS: KvsKey<i32> = KvsKey::new_with_default("gba-lpf-mode", 0);
 
-/// Whether the Gameboy (DMG/CGB) core's 8 kHz audio low-pass filter is enabled
-pub static GB_AUDIO_LOWPASS: KvsKey<bool> = KvsKey::new_with_default("gb-audio-lpf", false);
+/// Gameboy (DMG/CGB) audio low-pass filter: 0 = Off, 1 = 5 kHz, 2 = 8 kHz.
+pub static GB_AUDIO_LOWPASS: KvsKey<i32> = KvsKey::new_with_default("gb-lpf-mode", 0);
 
 /// Startup action.
 pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-action", 0);

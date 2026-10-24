@@ -343,7 +343,8 @@ class Link extends Module {
           logger.info("Normal transfer done")
           when (isMaster) {
             // Master holds the data for a few more cycles (for the slave to read) before the
-            // transfer completes (hardware: ~5 cycles after the last rising edge, at any clock rate).
+            // transfer completes. Hardware measures 5 cycles from the last rising edge to completion
+            // at any clock rate, counting the 1-cycle start delay (regSiocntStart) -- so 4 here.
             regMasterHold := true.B
             regHoldCounter := 0.U
           } .otherwise {
@@ -448,6 +449,11 @@ class Link extends Module {
           } .otherwise {
             regState := Link.MultiState.SlaveReceive
           }
+        }
+        when (siocntStartSet && !isInLow) {
+          // A slave writing the start bit still reads it back as busy until a transfer ends
+          // (mGBA suite 'M: SIOCNT', no cable).
+          regBusy := true.B
         }
       }
       is (Link.MultiState.MasterTransmit) {
@@ -861,8 +867,9 @@ class Link extends Module {
 }
 
 object Link {
-  /// Cycles from the last rising clock edge until a Normal mode master transfer completes.
-  val NormalMasterHoldCycles = 5
+  /// Cycles from the last rising clock edge until a Normal mode master transfer completes
+  /// (on top of the 1-cycle start delay).
+  val NormalMasterHoldCycles = 4
 
   class Ports extends Bundle {
     val so = Bool()

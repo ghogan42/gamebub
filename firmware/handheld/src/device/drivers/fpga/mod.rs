@@ -36,6 +36,18 @@ pub const REG_CTRL_VIBRATE: u32 = 0xF100_1014;
 /// Resets on FPGA reconfiguration, so it must be re-applied after every
 /// bitstream load -- see `bitstream::program_fpga`.
 pub const REG_CTRL_COLOR_FIX: u32 = 0xF100_1020;
+/// Pixel effect mode: 0 = None, 1 = Grid, 2 = Stripe, 3 = RGB Grid,
+/// 4 = Scanlines Light, 5 = Scanlines Dark (GBA-only), 6 = Shadow 1,
+/// 7 = Shadow 2, 8 = Shadow 3 (Gameboy DMG-only, blend against
+/// REG_CTRL_DMG_SHADOW_BG), 9 = Shadow 1, 10 = Shadow 2, 11 = Shadow 3
+/// (Gameboy CGB-only, blend against a per-pixel-derived value computed
+/// entirely in hardware -- ignores REG_CTRL_DMG_SHADOW_BG).
+pub const REG_CTRL_PIXEL_EFFECT: u32 = 0xF100_1024;
+/// Background color the Gameboy DMG-only "Shadow" pixel effects (hw modes
+/// 6-8) blend against, packed as `0x00RRGGBB` (8 bits/channel,
+/// approximate -- see `dmg_palette::DmgPalette::background_rgb888_approx`).
+/// Not used by the CGB Shadow effects (hw modes 9-11).
+pub const REG_CTRL_DMG_SHADOW_BG: u32 = 0xF100_1028;
 
 pub const REG_CTRL_CMD_HOST: u32 = 0xF100_1100;
 pub const REG_CTRL_CMD_CORE: u32 = 0xF100_1104;

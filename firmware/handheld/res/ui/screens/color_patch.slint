@@ -1,0 +1,135 @@
+import { Global, ScreenId, Backend } from "../common.slint";
+import { ScreenBase } from "../components/screen.slint";
+
+// One adjustable value in a test screen's control bar. The selected item is
+// highlighted.
+export component TestValue inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> selected;
+    background: selected ? #FFD84A : transparent;
+    border-radius: 2px;
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 4px;
+        Text {
+            vertical-alignment: center;
+            color: selected ? black : #C0C0C0;
+            text: label;
+        }
+        Text {
+            vertical-alignment: center;
+            font-weight: 800;
+            color: selected ? black : white;
+            text: value;
+        }
+    }
+}
+
+// Control bar shared by the test screens: the values row plus a hint line,
+// on an opaque dark background. Everything else on these screens is
+// transparent, so the FPGA test patch (exact 8-bit color, no color
+// correction) fills it.
+export component TestControlBar inherits Rectangle {
+    in property <string> hint;
+    background: rgba(0, 0, 0, 80%);
+    VerticalLayout {
+        padding: 3px;
+        spacing: 2px;
+        HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
+            @children
+        }
+        Text {
+            horizontal-alignment: center;
+            font-size: 10px;
+            color: #C0C0C0;
+            text: hint;
+        }
+    }
+}
+
+// Color Patch: an exact 8-bit RGB patch, for finding the triplet that
+// measures as neutral on a given display and meter.
+export component ColorPatchScreen inherits ScreenBase {
+    title: "Color Patch";
+    background: transparent;
+    forward-focus: i-focus-scope;
+
+    // 0 = R, 1 = G, 2 = B
+    property <int> selected: 0;
+
+    function adjust(delta: int) {
+        if (selected == 0) {
+            Backend.test-patch-r = clamp(Backend.test-patch-r + delta, 0, 255);
+        } else if (selected == 1) {
+            Backend.test-patch-g = clamp(Backend.test-patch-g + delta, 0, 255);
+        } else {
+            Backend.test-patch-b = clamp(Backend.test-patch-b + delta, 0, 255);
+        }
+        Backend.test-patch-changed();
+    }
+
+    i-focus-scope := FocusScope {
+        VerticalLayout {
+            alignment: end;
+            TestControlBar {
+                hint: "Left/Right: channel  Up/Down: 1  L/R: 16  Y: 255,255,255  B: back";
+                TestValue {
+                    label: "R";
+                    value: Backend.test-patch-r;
+                    selected: root.selected == 0;
+                }
+                TestValue {
+                    label: "G";
+                    value: Backend.test-patch-g;
+                    selected: root.selected == 1;
+                }
+                TestValue {
+                    label: "B";
+                    value: Backend.test-patch-b;
+                    selected: root.selected == 2;
+                }
+            }
+        }
+
+        key-pressed(event) => {
+            if event.text == "Home" && !Global.home-consumed {
+                Global.set-screen(ScreenId.MainMenu);
+                accept
+            } else if (event.text == "b" && !event.repeat) {
+                Global.ui-status-bar = true;
+                Global.set-screen(ScreenId.Settings);
+                accept
+            } else if (event.text == Key.LeftArrow && !event.repeat) {
+                root.selected = Math.mod(root.selected + 2, 3);
+                accept
+            } else if (event.text == Key.RightArrow && !event.repeat) {
+                root.selected = Math.mod(root.selected + 1, 3);
+                accept
+            } else if (event.text == Key.UpArrow) {
+                adjust(1);
+                accept
+            } else if (event.text == Key.DownArrow) {
+                adjust(-1);
+                accept
+            } else if (event.text == "r") {
+                adjust(16);
+                accept
+            } else if (event.text == "l") {
+                adjust(-16);
+                accept
+            } else if (event.text == "y" && !event.repeat) {
+                Backend.test-patch-r = 255;
+                Backend.test-patch-g = 255;
+                Backend.test-patch-b = 255;
+                Backend.test-patch-changed();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+}

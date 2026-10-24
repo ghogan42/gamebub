@@ -24,6 +24,8 @@ export enum ScreenId {
     About,
     Cores,
     ColorTest,
+    ColorPatch,
+    GammaTest,
 }
 
 export struct BatteryInfo {
@@ -50,7 +52,10 @@ export global Global {
 
     public function set-screen(screen: ScreenId) {
         current-screen = screen;
-        ui-transparent = (screen == ScreenId.Game || screen == ScreenId.Setup);
+        // The measurement test screens are transparent so the FPGA test patch
+        // shows through everywhere except their control bars.
+        ui-transparent = (screen == ScreenId.Game || screen == ScreenId.Setup
+            || screen == ScreenId.ColorPatch || screen == ScreenId.GammaTest);
         Backend.screen-enter(screen);
     }
 }
@@ -87,6 +92,21 @@ export global Backend {
     in property <int> color-test-g: 0;
     in property <int> color-test-b: 0;
     callback color-test-advance();
+
+    // Display measurement test screens (Color Patch, Gamma Table Test). The
+    // patch itself is drawn by the FPGA in exact 8-bit color; these just
+    // hold the settings, and the callbacks push them to the hardware.
+    in-out property <int> test-patch-r: 255;
+    in-out property <int> test-patch-g: 255;
+    in-out property <int> test-patch-b: 255;
+    callback test-patch-changed();
+    // Gamma Table Test: gray level shown, macro table (0 = 3G off,
+    // 1 = neutral, 2 = Warm ramp) and raw micro-table nibbles (0-15).
+    in-out property <int> gamma-test-level: 32;
+    in-out property <int> gamma-test-macro: 2;
+    in-out property <int> gamma-test-micro-r: 0;
+    in-out property <int> gamma-test-micro-b: 0;
+    callback gamma-test-changed();
 
     in property <[SettingEntry]> settings: [
         {

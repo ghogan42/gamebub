@@ -446,6 +446,20 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     val mode = UInt(2.W)
   }))
 
+  /**
+   * Display measurement test patch. When enabled, every pixel the UI overlay
+   * leaves transparent is replaced by this exact 8-bit color, sent straight
+   * to the panel with no color correction or white-point fix -- the menu
+   * overlay itself is only 5 bits per channel, so it can't show arbitrary
+   * 8-bit codes.
+   */
+  val controlTestPatch = RegInit(0.U.asTypeOf(new Bundle() {
+    val enable = Bool()
+    val r = UInt(8.W)
+    val g = UInt(8.W)
+    val b = UInt(8.W)
+  }))
+
   val controlCommandHost = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
   val controlCommandCore = RegInit(0.U.asTypeOf(Output(new HostV0.CommandChannel)))
 
@@ -490,6 +504,7 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
       0x1014 -> RegisterMap.Entry.w(controlVibrate),
       0x1018 -> RegisterMap.Entry.w(controlVideoFilter),
       0x1020 -> RegisterMap.Entry.rw(controlColorFix),
+      0x1030 -> RegisterMap.Entry.rw(controlTestPatch),
 
       0x1100 -> RegisterMap.Entry.rw(controlCommandHost),
       0x1104 -> RegisterMap.Entry.rw(controlCommandCore),
@@ -701,7 +716,16 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
     } else {
       videoOutput
     }
-    val lcdData = correctedOutput.convertTo(
+    // Measurement test patch: replaces everything the overlay doesn't cover,
+    // after all color processing, so the panel gets exactly the set code.
+    val testPatch = XpmCdcHandshake.continuous(clock, controlTestPatch)
+    val overlayOpaque = overlayRead.a.asBool && overlayInBounds
+    val testPatchColor = Wire(ColorRGB(8, 8, 8))
+    testPatchColor.r := testPatch.r
+    testPatchColor.g := testPatch.g
+    testPatchColor.b := testPatch.b
+    val panelOutput = Mux(testPatch.enable && !overlayOpaque, testPatchColor, correctedOutput)
+    val lcdData = panelOutput.convertTo(
       ColorRGB(
         revision.displayColorDepth,
         revision.displayColorDepth,

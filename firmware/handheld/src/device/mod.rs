@@ -748,6 +748,44 @@ impl Device<'_> {
     #[cfg(not(feature = "has_ili9806e"))]
     pub fn set_extra_color_fix(&mut self, _mode: i32) {}
 
+    /// Show (or with `None`, hide) the display measurement test patch: the
+    /// FPGA fills every pixel the UI overlay leaves transparent with this
+    /// exact 8-bit color, bypassing all color correction. Resets on FPGA
+    /// reconfiguration.
+    pub fn set_test_patch(&mut self, color: Option<(u8, u8, u8)>) {
+        let value = match color {
+            Some((r, g, b)) => (1 << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32),
+            None => 0,
+        };
+        if let Err(e) = self.fpga.write_u32(drivers::fpga::REG_CTRL_TEST_PATCH, value) {
+            log::warn!("Failed to set test patch: {:?}", e);
+        }
+    }
+
+    /// Measurement test only: program the panel's 3G gamma tables directly
+    /// (see `ILI9806E::gamma_test_apply`). rev4 only.
+    #[cfg(feature = "has_ili9806e")]
+    pub fn gamma_test_apply(&mut self, macro_mode: i32, micro_r: u8, micro_b: u8) {
+        if let Err(e) = self.lcd.gamma_test_apply(macro_mode, micro_r, micro_b) {
+            log::warn!("Failed to apply gamma test tables: {:?}", e);
+        }
+    }
+
+    #[cfg(not(feature = "has_ili9806e"))]
+    pub fn gamma_test_apply(&mut self, _macro_mode: i32, _micro_r: u8, _micro_b: u8) {}
+
+    /// Undo `gamma_test_apply`, restoring the saved Color Temperature.
+    #[cfg(feature = "has_ili9806e")]
+    pub fn gamma_test_restore(&mut self) {
+        let preset = crate::kvs::keys::COLOR_TEMPERATURE.get().unwrap();
+        if let Err(e) = self.lcd.gamma_test_restore(preset) {
+            log::warn!("Failed to restore gamma tables: {:?}", e);
+        }
+    }
+
+    #[cfg(not(feature = "has_ili9806e"))]
+    pub fn gamma_test_restore(&mut self) {}
+
     /// Initialize the system time (after boot).
     ///
     /// Reads the time from the RTC. Sets a default time if no time is set.

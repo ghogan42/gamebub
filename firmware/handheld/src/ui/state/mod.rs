@@ -16,6 +16,7 @@ mod main_menu;
 pub mod notifications;
 mod settings;
 mod setup;
+mod test_patch;
 mod tools;
 
 pub use game::CoreSettingUiItem;
@@ -33,6 +34,7 @@ pub struct UiState {
     core_file_select_filename: String,
     core_file_select_timer: Timer,
     color_test_index: usize,
+    test_patch: test_patch::TestPatchState,
 }
 
 impl UiState {
@@ -48,6 +50,7 @@ impl UiState {
             core_file_select_filename: String::new(),
             core_file_select_timer: Timer::default(),
             color_test_index: 0,
+            test_patch: test_patch::TestPatchState::default(),
         };
         let state = Rc::new(RefCell::new(state));
         state.borrow_mut().setup(state.clone(), device);
@@ -80,6 +83,7 @@ impl UiState {
         self.setup_tools(&state, device);
         self.setup_settings(&state, device);
         self.setup_color_test(&state, device);
+        self.setup_test_patch(&state, device);
         self.setup_cores(&state, device);
 
         // Check for first boot
@@ -107,9 +111,15 @@ impl UiState {
         backend.on_screen_enter(move |screen| {
             // Called when a new screen is entered, before the new frame is rendered.
             log::info!("Screen enter: {:?}", screen);
+            let mut state = state_.borrow_mut();
             match screen {
-                ScreenId::Settings => state_.borrow_mut().on_settings_enter(),
-                ScreenId::ColorTest => state_.borrow_mut().on_color_test_enter(),
+                ScreenId::ColorPatch => state.on_color_patch_enter(),
+                ScreenId::GammaTest => state.on_gamma_test_enter(),
+                _ => state.on_test_patch_leave(),
+            }
+            match screen {
+                ScreenId::Settings => state.on_settings_enter(),
+                ScreenId::ColorTest => state.on_color_test_enter(),
                 _ => {}
             }
         });

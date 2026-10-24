@@ -376,4 +376,52 @@ where
 
         Ok(())
     }
+
+    /// Write the same byte (`r` nibble high, `b` nibble low) to every
+    /// register 0x00..=`last_reg` of a gamma table page, in order, so the
+    /// write ends on `last_reg` and latches (see `write_gamma_ramp`).
+    fn write_gamma_uniform(&mut self, page: u8, last_reg: u8, r: u8, b: u8) -> Result<(), Error> {
+        self.select_page(page)?;
+        let value = ((r & 0xF) << 4) | (b & 0xF);
+        for reg in 0..=last_reg {
+            self.write_cmd(reg, &[value])?;
+        }
+        Ok(())
+    }
+
+    /// Measurement test only (Settings > Gamma Table Test): program the
+    /// Digital 3 Gamma tables directly.
+    ///
+    /// `macro_mode`: 0 = 3G disabled, 1 = enabled with a neutral macro table
+    /// (0x88 everywhere), 2 = enabled with the Warm macro ramp. `micro_r` and
+    /// `micro_b` are raw nibbles (0x0..=0xF) written to all 256 micro points
+    /// (pages 3 and 4). They are raw rather than signed because the micro
+    /// encoding hasn't been measured -- the macro table's sign-magnitude
+    /// layout is only an assumption for it.
+    ///
+    /// Undo with `gamma_test_restore`.
+    pub fn gamma_test_apply(&mut self, macro_mode: i32, micro_r: u8, micro_b: u8) -> Result<(), Error> {
+        let (enable, b_mag) = match macro_mode {
+            1 => (true, 0),
+            2 => (true, 7),
+            _ => (false, 0),
+        };
+        self.write_gamma_ramp(0x02, 0x3F, 0, b_mag)?;
+        self.write_gamma_uniform(0x03, 0x7F, micro_r, micro_b)?;
+        self.write_gamma_uniform(0x04, 0x7F, micro_r, micro_b)?;
+        self.select_page(0x02)?;
+        self.write_cmd(0x40, &[enable as u8])?;
+        self.select_page(0x00)?;
+        Ok(())
+    }
+
+    /// Undo `gamma_test_apply`: micro tables back to 0x00 (assumed to be the
+    /// reset value -- nothing else writes them), then re-apply the
+    /// color-temperature `preset`, which rewrites the macro table and the
+    /// 3G enable.
+    pub fn gamma_test_restore(&mut self, preset: i32) -> Result<(), Error> {
+        self.write_gamma_uniform(0x03, 0x7F, 0, 0)?;
+        self.write_gamma_uniform(0x04, 0x7F, 0, 0)?;
+        self.set_color_temperature(preset)
+    }
 }

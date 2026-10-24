@@ -13,6 +13,8 @@ import { Notification } from "components/notification.slint";
 import { SetupScreen } from "screens/setup.slint";
 import { CoresScreen } from "screens/cores/cores.slint";
 import { ColorTestScreen } from "screens/color_test.slint";
+import { ColorPatchScreen } from "screens/color_patch.slint";
+import { GammaTestScreen } from "screens/gamma_test.slint";
 
 export { ScreenId, Backend }
 export component MainWindow inherits Window {
@@ -120,6 +122,22 @@ export component MainWindow inherits Window {
 
                 if (Global.current-screen == ScreenId.ColorTest): ColorTestScreen {
                     init => {
+                        self.focus();
+                        root.screen-title = self.title;
+                    }
+                }
+
+                if (Global.current-screen == ScreenId.ColorPatch): ColorPatchScreen {
+                    init => {
+                        Global.ui-status-bar = false;
+                        self.focus();
+                        root.screen-title = self.title;
+                    }
+                }
+
+                if (Global.current-screen == ScreenId.GammaTest): GammaTestScreen {
+                    init => {
+                        Global.ui-status-bar = false;
                         self.focus();
                         root.screen-title = self.title;
                     }

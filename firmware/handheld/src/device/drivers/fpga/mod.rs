@@ -36,6 +36,10 @@ pub const REG_CTRL_VIBRATE: u32 = 0xF100_1014;
 /// Resets on FPGA reconfiguration, so it must be re-applied after every
 /// bitstream load -- see `bitstream::program_fpga`.
 pub const REG_CTRL_COLOR_FIX: u32 = 0xF100_1020;
+/// Display measurement test patch: bit 24 = enable, bits 23:0 = RGB888.
+/// When enabled, pixels the UI overlay leaves transparent show this exact
+/// color, after all color correction.
+pub const REG_CTRL_TEST_PATCH: u32 = 0xF100_1030;
 
 pub const REG_CTRL_CMD_HOST: u32 = 0xF100_1100;
 pub const REG_CTRL_CMD_CORE: u32 = 0xF100_1104;

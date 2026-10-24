@@ -89,6 +89,8 @@ mod settings {
             choices: &["None", "D75", "D65"],
         },
         PAGE_GENERAL_COLOR_TEST,
+        PAGE_GENERAL_COLOR_PATCH,
+        PAGE_GENERAL_GAMMA_TEST,
     ];
 
     #[cfg(not(feature = "has_ili9806e"))]
@@ -97,6 +99,7 @@ mod settings {
         PAGE_GENERAL_STARTUP,
         PAGE_GENERAL_COLOR_TEMP,
         PAGE_GENERAL_COLOR_TEST,
+        PAGE_GENERAL_COLOR_PATCH,
     ];
 
     const PAGE_GENERAL_DATETIME: Entry = Entry::SystemDatetime {
@@ -115,6 +118,14 @@ mod settings {
     const PAGE_GENERAL_COLOR_TEST: Entry = Entry::Screen {
         name: "Color Test",
         screen: ScreenId::ColorTest,
+    };
+    const PAGE_GENERAL_COLOR_PATCH: Entry = Entry::Screen {
+        name: "Color Patch",
+        screen: ScreenId::ColorPatch,
+    };
+    const PAGE_GENERAL_GAMMA_TEST: Entry = Entry::Screen {
+        name: "Gamma Table Test",
+        screen: ScreenId::GammaTest,
     };
 
     pub static PAGE_DOCK: Page = Page {

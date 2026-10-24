@@ -1,0 +1,90 @@
+import { Global, ScreenId, Backend } from "../common.slint";
+import { ScreenBase } from "../components/screen.slint";
+import { TestValue, TestControlBar } from "color_patch.slint";
+
+// Gamma Table Test: an exact 8-bit gray patch while programming the panel's
+// 3G gamma tables directly -- the macro table (off / neutral / Warm ramp)
+// and a raw nibble written uniformly to every micro-table point, for red and
+// blue. For measuring the micro-table step size and the Warm ramp's
+// behaviour on dark grays. Leaving the screen restores the normal tables.
+export component GammaTestScreen inherits ScreenBase {
+    title: "Gamma Table Test";
+    background: transparent;
+    forward-focus: i-focus-scope;
+
+    // 0 = gray level, 1 = macro, 2 = micro R, 3 = micro B
+    property <int> selected: 0;
+
+    function adjust(delta: int) {
+        if (selected == 0) {
+            Backend.gamma-test-level = clamp(Backend.gamma-test-level + delta, 0, 255);
+        } else if (selected == 1) {
+            Backend.gamma-test-macro = clamp(Backend.gamma-test-macro + delta, 0, 2);
+        } else if (selected == 2) {
+            Backend.gamma-test-micro-r = clamp(Backend.gamma-test-micro-r + delta, 0, 15);
+        } else {
+            Backend.gamma-test-micro-b = clamp(Backend.gamma-test-micro-b + delta, 0, 15);
+        }
+        Backend.gamma-test-changed();
+    }
+
+    i-focus-scope := FocusScope {
+        VerticalLayout {
+            alignment: end;
+            TestControlBar {
+                hint: "Left/Right: item  Up/Down: 1  L/R: 16  B: back";
+                TestValue {
+                    label: "Gray";
+                    value: Backend.gamma-test-level;
+                    selected: root.selected == 0;
+                }
+                TestValue {
+                    label: "Macro";
+                    value: Backend.gamma-test-macro == 0 ? "Off" : Backend.gamma-test-macro == 1 ? "Neutral" : "Warm";
+                    selected: root.selected == 1;
+                }
+                TestValue {
+                    label: "Micro R";
+                    value: Backend.gamma-test-micro-r;
+                    selected: root.selected == 2;
+                }
+                TestValue {
+                    label: "Micro B";
+                    value: Backend.gamma-test-micro-b;
+                    selected: root.selected == 3;
+                }
+            }
+        }
+
+        key-pressed(event) => {
+            if event.text == "Home" && !Global.home-consumed {
+                Global.set-screen(ScreenId.MainMenu);
+                accept
+            } else if (event.text == "b" && !event.repeat) {
+                Global.ui-status-bar = true;
+                Global.set-screen(ScreenId.Settings);
+                accept
+            } else if (event.text == Key.LeftArrow && !event.repeat) {
+                root.selected = Math.mod(root.selected + 3, 4);
+                accept
+            } else if (event.text == Key.RightArrow && !event.repeat) {
+                root.selected = Math.mod(root.selected + 1, 4);
+                accept
+            } else if (event.text == Key.UpArrow) {
+                adjust(1);
+                accept
+            } else if (event.text == Key.DownArrow) {
+                adjust(-1);
+                accept
+            } else if (event.text == "r") {
+                adjust(16);
+                accept
+            } else if (event.text == "l") {
+                adjust(-16);
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+}

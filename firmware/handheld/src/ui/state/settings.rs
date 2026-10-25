@@ -86,7 +86,8 @@ mod settings {
         Entry::List {
             name: "Extra Color Fix",
             key: &keys::EXTRA_COLOR_FIX,
-            choices: &["None", "D75", "D65", "Custom"],
+            // choices: &["None", "D75", "D65", "Custom"],
+            choices: &["None", "D75", "Custom 1", "Custom 2"],
         },
     ];
 

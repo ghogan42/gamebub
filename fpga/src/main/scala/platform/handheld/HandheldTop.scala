@@ -435,7 +435,7 @@ class HandheldTop[T <: Core](coreFactory: () => T, revision: Revision) extends M
   /**
    * Final white-point correction applied to the composited output -- game
    * pixels and UI overlay alike -- just before the panel bit-depth
-   * conversion. 0 = None, 1 = D75, 2 = D65, 3 = Custom. See [[lib.video.WhitePointFix]].
+   * conversion. 0 = None, 1 = D75, 2 = Custom 1, 3 = Custom 2. See [[lib.video.WhitePointFix]].
    *
    * Unlike the in-core `ColorCorrection` stage this is part of the
    * framework, so it survives across cores; but like every other register

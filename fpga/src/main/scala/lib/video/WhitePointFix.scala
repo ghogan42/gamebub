@@ -43,11 +43,13 @@ import chisel3.util._
  * Gains are n/256, which is where quantization error drops below the
  * run-to-run spread of the measurements themselves:
  *
- *   mode 0  None  R 256/256  G 256/256  B 256/256   (exactly transparent)
- *   mode 1  D75   R 256/256  G 196/256  B 180/256   (measured 7878K)
- *   mode 2  D65   R 256/256  G 189/256  B 164/256   (measured 6844K)
- *   mode 3  Custom R 256/256 G 208/256  B 184/256   (white -> 255,207,183;
- *                                                    not yet measured)
+ *   mode 0  None      R 256/256  G 256/256  B 256/256   (exactly transparent)
+ *   mode 1  D75       R 256/256  G 196/256  B 180/256   (measured 7878K)
+ *   mode 2  Custom 1  R 256/256  G 208/256  B 184/256   (white -> 255,207,183)
+ *   mode 3  Custom 2  R 256/256  G 203/256  B 191/256   (white -> 255,202,190)
+ *
+ * D65 (R 256/256, G 189/256, B 164/256, measured 6844K) was mode 2 and is
+ * commented out in `gains` below; its shift-add cases are kept in `times`.
  *
  * **These are deliberately not the most accurate values available.** The
  * secant solution (D75 G 194/B 177, D65 G 187/B 160) measured closer to
@@ -62,7 +64,7 @@ import chisel3.util._
  */
 class WhitePointFix extends Module {
   val io = IO(new Bundle {
-    /** 0 = None, 1 = D75, 2 = D65, 3 = Custom. */
+    /** 0 = None, 1 = D75, 2 = Custom 1, 3 = Custom 2. */
     val mode = Input(UInt(2.W))
     val in = Input(ColorRGB(8))
     val out = Output(ColorRGB(8))
@@ -77,8 +79,9 @@ class WhitePointFix extends Module {
   private val gains = Seq(
     /* 0: None */ (256, 256, 256),
     /* 1: D75  */ (256, 196, 180),
-    /* 2: D65  */ (256, 189, 164),
-    /* 3: Custom */ (256, 208, 184),
+    // /* 2: D65  */ (256, 189, 164),
+    /* 2: Custom 1 */ (256, 208, 184),
+    /* 3: Custom 2 */ (256, 203, 191),
   )
 
   /** `v * num`, built from shifts and adds -- no multiplier. */
@@ -90,6 +93,8 @@ class WhitePointFix extends Module {
     case 164 => (v << 7) +& (v << 5) +& (v << 2)
     case 208 => (v << 7) +& (v << 6) +& (v << 4)
     case 184 => (v << 7) +& (v << 5) +& (v << 4) +& (v << 3)
+    case 203 => (v << 7) +& (v << 6) +& (v << 3) +& (v << 1) +& v
+    case 191 => (v << 7) +& (v << 6) -& v
   }
 
   /**

@@ -30,7 +30,7 @@ pub const REG_CTRL_FOCUS: u32 = 0xF100_1010;
 pub const REG_CTRL_VIBRATE: u32 = 0xF100_1014;
 /// Final white-point correction, applied to the composited output (UI
 /// overlay included) just before the panel bit-depth conversion:
-/// 0 = None, 1 = D75, 2 = D65. Distinct from the per-core
+/// 0 = None, 1 = D75, 2 = D65, 3 = Custom. Distinct from the per-core
 /// `ColorCorrection` stage, which only tints game pixels.
 ///
 /// Resets on FPGA reconfiguration, so it must be re-applied after every

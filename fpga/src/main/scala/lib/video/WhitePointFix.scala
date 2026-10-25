@@ -46,6 +46,8 @@ import chisel3.util._
  *   mode 0  None  R 256/256  G 256/256  B 256/256   (exactly transparent)
  *   mode 1  D75   R 256/256  G 196/256  B 180/256   (measured 7878K)
  *   mode 2  D65   R 256/256  G 189/256  B 164/256   (measured 6844K)
+ *   mode 3  Custom R 256/256 G 208/256  B 184/256   (white -> 255,207,183;
+ *                                                    not yet measured)
  *
  * **These are deliberately not the most accurate values available.** The
  * secant solution (D75 G 194/B 177, D65 G 187/B 160) measured closer to
@@ -60,7 +62,7 @@ import chisel3.util._
  */
 class WhitePointFix extends Module {
   val io = IO(new Bundle {
-    /** 0 = None, 1 = D75, 2 = D65. Unknown values behave as None. */
+    /** 0 = None, 1 = D75, 2 = D65, 3 = Custom. */
     val mode = Input(UInt(2.W))
     val in = Input(ColorRGB(8))
     val out = Output(ColorRGB(8))
@@ -76,6 +78,7 @@ class WhitePointFix extends Module {
     /* 0: None */ (256, 256, 256),
     /* 1: D75  */ (256, 196, 180),
     /* 2: D65  */ (256, 189, 164),
+    /* 3: Custom */ (256, 208, 184),
   )
 
   /** `v * num`, built from shifts and adds -- no multiplier. */
@@ -85,6 +88,8 @@ class WhitePointFix extends Module {
     case 189 => (v << 7) +& (v << 6) -& (v << 1) -& v
     case 180 => (v << 7) +& (v << 5) +& (v << 4) +& (v << 2)
     case 164 => (v << 7) +& (v << 5) +& (v << 2)
+    case 208 => (v << 7) +& (v << 6) +& (v << 4)
+    case 184 => (v << 7) +& (v << 5) +& (v << 4) +& (v << 3)
   }
 
   /**

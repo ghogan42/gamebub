@@ -44,7 +44,7 @@ pub static STARTUP_ACTION: KvsKey<i32> = KvsKey::new_with_default("startup-actio
 pub static COLOR_TEMPERATURE: KvsKey<i32> = KvsKey::new_with_default("color-temp", 0);
 
 /// Final white-point correction applied in the FPGA to everything on screen,
-/// UI included. 0 = None, 1 = D75, 2 = D65. Only takes effect on rev4.
+/// UI included. 0 = None, 1 = D75, 2 = D65, 3 = Custom. Only takes effect on rev4.
 pub static EXTRA_COLOR_FIX: KvsKey<i32> = KvsKey::new_with_default("color-fix", 0);
 
 /// Last firmware version

@@ -1,9 +1,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Timer};
 
-use super::super::slint::Backend;
+use super::super::slint::{Backend, ScreenId};
 use crate::device::Device;
 
 use super::UiState;
@@ -27,26 +28,37 @@ impl UiState {
         let backend = root.global::<Backend>();
 
         let state_ = state.clone();
-        backend.on_test_patch_changed(move || state_.borrow_mut().apply_color_patch());
+        backend.on_test_patch_changed(move || UiState::schedule_test_patch_update(&state_, ScreenId::ColorPatch));
 
         let state_ = state.clone();
-        backend.on_gamma_test_changed(move || state_.borrow_mut().apply_gamma_test());
+        backend.on_gamma_test_changed(move || UiState::schedule_test_patch_update(&state_, ScreenId::GammaTest));
     }
 
-    pub(super) fn on_color_patch_enter(&mut self) {
-        self.leave_gamma_test();
-        self.apply_color_patch();
+    /// Bring the test patch and gamma tables in line with `screen` (the
+    /// screen being entered, or the one whose values changed). The device
+    /// work runs from a zero-delay timer in the UI loop, not inside the Slint
+    /// callback that asked for it, so it never runs nested in Slint event
+    /// handling or rendering.
+    pub(super) fn schedule_test_patch_update(state: &Rc<RefCell<UiState>>, screen: ScreenId) {
+        let state = state.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            let mut state = state.borrow_mut();
+            match screen {
+                ScreenId::ColorPatch => {
+                    state.leave_gamma_test();
+                    state.apply_color_patch();
+                }
+                ScreenId::GammaTest => state.apply_gamma_test(),
+                _ => state.on_test_patch_leave(),
+            }
+        });
     }
 
-    pub(super) fn on_gamma_test_enter(&mut self) {
-        self.apply_gamma_test();
-    }
-
-    /// Called on entering any other screen: turn the test patch off and put
-    /// the gamma tables back.
-    pub(super) fn on_test_patch_leave(&mut self) {
+    /// Turn the test patch off and put the gamma tables back.
+    fn on_test_patch_leave(&mut self) {
         self.leave_gamma_test();
         if self.test_patch.patch_active {
+            log::info!("Test patch off");
             Device::lock().set_test_patch(None);
             self.test_patch.patch_active = false;
         }
@@ -61,6 +73,7 @@ impl UiState {
             channel(backend.get_test_patch_g()),
             channel(backend.get_test_patch_b()),
         );
+        log::info!("Color patch: {:?}", color);
         Device::lock().set_test_patch(Some(color));
         self.test_patch.patch_active = true;
     }
@@ -75,6 +88,7 @@ impl UiState {
             backend.get_gamma_test_micro_b().clamp(0, 15) as u8,
         );
 
+        log::info!("Gamma test: level {} tables {:?}", level, tables);
         let mut device = Device::lock();
         // Rewriting the tables is ~350 SPI commands, so only do it when they
         // change, not on every gray-level step.
@@ -88,6 +102,7 @@ impl UiState {
 
     fn leave_gamma_test(&mut self) {
         if self.test_patch.gamma_applied.take().is_some() {
+            log::info!("Gamma test: restoring tables");
             Device::lock().gamma_test_restore();
         }
     }

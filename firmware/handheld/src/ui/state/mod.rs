@@ -111,12 +111,10 @@ impl UiState {
         backend.on_screen_enter(move |screen| {
             // Called when a new screen is entered, before the new frame is rendered.
             log::info!("Screen enter: {:?}", screen);
+            // The measurement test screens touch the device; schedule that
+            // rather than doing it inside this Slint callback.
+            UiState::schedule_test_patch_update(&state_, screen);
             let mut state = state_.borrow_mut();
-            match screen {
-                ScreenId::ColorPatch => state.on_color_patch_enter(),
-                ScreenId::GammaTest => state.on_gamma_test_enter(),
-                _ => state.on_test_patch_leave(),
-            }
             match screen {
                 ScreenId::Settings => state.on_settings_enter(),
                 ScreenId::ColorTest => state.on_color_test_enter(),

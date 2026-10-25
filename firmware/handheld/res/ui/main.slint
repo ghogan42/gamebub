@@ -129,7 +129,6 @@ export component MainWindow inherits Window {
 
                 if (Global.current-screen == ScreenId.ColorPatch): ColorPatchScreen {
                     init => {
-                        Global.ui-status-bar = false;
                         self.focus();
                         root.screen-title = self.title;
                     }
@@ -137,7 +136,6 @@ export component MainWindow inherits Window {
 
                 if (Global.current-screen == ScreenId.GammaTest): GammaTestScreen {
                     init => {
-                        Global.ui-status-bar = false;
                         self.focus();
                         root.screen-title = self.title;
                     }

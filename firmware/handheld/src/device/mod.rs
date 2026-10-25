@@ -720,7 +720,7 @@ impl Device<'_> {
     pub fn set_color_temperature(&mut self, _preset: i32) {}
 
     /// Apply the "Extra Color Fix" white-point correction (0 = None,
-    /// 1 = D75, 2 = D65).
+    /// 1 = D75, 2 = D65, 3 = Custom).
     ///
     /// Unlike `set_color_temperature`, which programs the panel itself, this
     /// is an FPGA stage applied to the composited video output -- so it
